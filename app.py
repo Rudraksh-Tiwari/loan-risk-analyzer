@@ -104,22 +104,22 @@ preset = st.session_state.get("preset", None)
 
 presets = {
     "good": {
-        "age": 35, "gender": "male", "education": "Bachelor",
-        "income": 85000, "emp_exp": 8, "home": "OWN",
-        "loan_amt": 5000, "intent": "EDUCATION", "int_rate": 7.0,
-        "cred_hist": 12, "credit_score": 780, "prev_default": "No"
+        "age": 38, "gender": "male", "education": "Master",
+        "income": 120000, "emp_exp": 10, "home": "OWN",
+        "loan_amt": 4000, "intent": "EDUCATION", "int_rate": 6.0,
+        "cred_hist": 15, "credit_score": 820, "prev_default": "No"
     },
     "bad": {
-        "age": 22, "gender": "female", "education": "High School",
-        "income": 15000, "emp_exp": 0, "home": "RENT",
-        "loan_amt": 30000, "intent": "PERSONAL", "int_rate": 22.0,
-        "cred_hist": 1, "credit_score": 380, "prev_default": "Yes"
+        "age": 21, "gender": "female", "education": "High School",
+        "income": 12000, "emp_exp": 0, "home": "RENT",
+        "loan_amt": 33000, "intent": "PERSONAL", "int_rate": 23.0,
+        "cred_hist": 1, "credit_score": 320, "prev_default": "Yes"
     },
     "borderline": {
-        "age": 29, "gender": "male", "education": "Associate",
-        "income": 42000, "emp_exp": 3, "home": "RENT",
-        "loan_amt": 12000, "intent": "MEDICAL", "int_rate": 13.5,
-        "cred_hist": 4, "credit_score": 580, "prev_default": "No"
+        "age": 30, "gender": "male", "education": "Associate",
+        "income": 45000, "emp_exp": 4, "home": "RENT",
+        "loan_amt": 14000, "intent": "MEDICAL", "int_rate": 12.0,
+        "cred_hist": 5, "credit_score": 560, "prev_default": "No"
     }
 }
 
