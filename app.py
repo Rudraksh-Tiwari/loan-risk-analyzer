@@ -43,7 +43,7 @@ xgb, explainer, feature_names = load_model()
 
 # ─── Groq client ───────────────────────────────────────────
 import os
-client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "YOUR_API_KEY"))
+client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "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"))
 
 # ─── Helper functions ──────────────────────────────────────
 def get_decision(risk):
@@ -193,7 +193,7 @@ if st.button(" Analyze Loan Application", use_container_width=True):
         'loan_intent_MEDICAL': 1 if intent == "MEDICAL" else 0,
         'loan_intent_PERSONAL': 1 if intent == "PERSONAL" else 0,
         'loan_intent_VENTURE': 1 if intent == "VENTURE" else 0,
-        'previous_loan_defaults_on_file_Yes': 1 if prev_default == "Yes" else 0,
+        'previous_loan_defaults_on_file_Yes': 0 if prev_default == "No" else 1,
     }
 
     input_df = pd.DataFrame([input_dict])[feature_names]
@@ -236,3 +236,5 @@ if st.button(" Analyze Loan Application", use_container_width=True):
     with st.spinner("Generating explanation..."):
         explanation = get_llm_explanation(prob, risk, decision, reasons)
     st.info(explanation)
+
+    st.write(feature_names)
