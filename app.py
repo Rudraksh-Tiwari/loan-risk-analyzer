@@ -143,13 +143,11 @@ presets = {
         "loan_amt": 4000, "intent": "EDUCATION", "int_rate": 6.0,
         "cred_hist": 15, "credit_score": 820, "prev_default": "No"
     },
-    # FIX: credit_score changed from 320 → 420 (within dataset range of 390–850)
-    # FIX: loan_amt changed from 12000 → 9000 so loan_pct = 0.60 (within dataset max of 0.66)
     "bad": {
         "age": 21, "gender": "female", "education": "High School",
-        "income": 15000, "emp_exp": 0, "home": "RENT",
-        "loan_amt": 9000, "intent": "PERSONAL", "int_rate": 23.0,
-        "cred_hist": 1, "credit_score": 420, "prev_default": "Yes"
+        "income": 340000, "emp_exp": 0, "home": "RENT",
+        "loan_amt": 35000, "intent": "EDUCATION", "int_rate": 21.2,
+        "cred_hist": 4, "credit_score": 481, "prev_default": "No"
     },
     "borderline": {
         "age": 28, "gender": "male", "education": "High School",
