@@ -130,21 +130,6 @@ loan-risk-analyzer/
 
 ---
 
-##  Requirements
-
-Create a `requirements.txt` file:
-pandas
-numpy
-scikit-learn
-xgboost
-shap
-streamlit
-groq
-matplotlib
-seaborn
-
----
-
 ##  What I Learned
 
 - Handling class imbalance in real financial datasets
@@ -159,7 +144,6 @@ seaborn
 **Rudraksh**  
 [GitHub](https://github.com/Rudraksh-Tiwari) •  
 <<<<<<< HEAD
-[LinkedIn](https://www.linkedin.com/in/rudraksh-tiwari-b6083129b/)
 =======
 [LinkedIn](https://www.linkedin.com/in/rudraksh-tiwari-b6083129b/)
 >>>>>>> a6caf9e (Loan Risk Analyzer - ML + SHAP + LLM + Streamlit)
