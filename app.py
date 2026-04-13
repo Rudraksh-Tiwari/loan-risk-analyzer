@@ -20,24 +20,14 @@ def load_model():
     X = df.drop('loan_status', axis=1)
     y = df['loan_status']
     X = pd.get_dummies(X, drop_first=True)
-
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
-
     scale_pos = (y_train == 0).sum() / (y_train == 1).sum()
-
-    xgb = XGBClassifier(
-        scale_pos_weight=scale_pos,
-        n_estimators=100,
-        random_state=42,
-        eval_metric='logloss',
-        verbosity=0
-    )
-
+    xgb = XGBClassifier(scale_pos_weight=scale_pos, n_estimators=100,
+                        random_state=42, eval_metric='logloss', verbosity=0)
     xgb.fit(X_train, y_train)
     explainer = shap.TreeExplainer(xgb)
-
     return xgb, explainer, X_train.columns.tolist()
 
 xgb, explainer, feature_names = load_model()
@@ -54,19 +44,17 @@ def get_decision(risk):
         return "REJECTED", "❌", "error"
 
 def get_llm_explanation(prob, risk, decision, reasons):
-    prompt = f"""You are a loan officer AI assistant at a bank.
+    prompt = f"""You are a loan officer. Write 2-3 SHORT sentences directly to the applicant. No greetings, no sign-offs, no placeholders like [Name] or [Bank].
 
-A loan application has been analyzed by our risk system:
+Decision: {decision}
+Approval chance: {prob:.0%}
+Top factors: {reasons[0]} | {reasons[1]} | {reasons[2]}
 
-- Decision: {decision}
-- Approval Probability: {prob:.0%}
-- Risk Score: {risk:.0%}
-- Top 3 factors:
-  1. {reasons[0]}
-  2. {reasons[1]}
-  3. {reasons[2]}
-
-Write a clear, professional explanation for the applicant."""
+Rules:
+- APPROVED: mention 1-2 strengths, keep it warm and brief
+- REJECTED: name the main reason, suggest one concrete improvement
+- FLAGGED: say a human will review it and roughly why
+- No formal letter format. No ML jargon. Plain English only. Max 3 sentences."""
 
     response = client_groq.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -78,10 +66,7 @@ Write a clear, professional explanation for the applicant."""
 def build_input(age, income, emp_exp, loan_amt, int_rate,
                 cred_hist, credit_score, gender, education,
                 home, intent, prev_default):
-
-    # FIX: Cap at 0.66 (actual dataset max), not 1.0 — prevents out-of-distribution values
     loan_pct = round(min(loan_amt / income, 0.66), 2)
-
     input_dict = {
         'person_age': age,
         'person_income': income,
@@ -99,7 +84,7 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
         'person_home_ownership_OTHER': 1 if home == "OTHER" else 0,
         'person_home_ownership_OWN': 1 if home == "OWN" else 0,
         'person_home_ownership_RENT': 1 if home == "RENT" else 0,
-        'loan_intent_DEBTCONSOLIDATION': 1 if intent == "DEBTCONSOLIDATION" else 0,  # FIX: was missing!
+        'loan_intent_DEBTCONSOLIDATION': 1 if intent == "DEBTCONSOLIDATION" else 0,
         'loan_intent_EDUCATION': 1 if intent == "EDUCATION" else 0,
         'loan_intent_HOMEIMPROVEMENT': 1 if intent == "HOMEIMPROVEMENT" else 0,
         'loan_intent_MEDICAL': 1 if intent == "MEDICAL" else 0,
@@ -107,23 +92,14 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
         'loan_intent_VENTURE': 1 if intent == "VENTURE" else 0,
         'previous_loan_defaults_on_file_Yes': 1 if prev_default == "Yes" else 0,
     }
+    return pd.DataFrame([input_dict])[feature_names], loan_pct
 
-    df = pd.DataFrame([input_dict])
-
-    for col in feature_names:
-        if col not in df:
-            df[col] = 0
-
-    df = df[feature_names]
-
-    return df, loan_pct
-
-
-# ─── UI ─────────────────────────────────────────────────────
+# ─── UI ────────────────────────────────────────────────────
 st.title("🏦 Loan Risk Analyzer")
 st.markdown("AI-powered loan decision system with explainable risk assessment")
 st.divider()
 
+# ─── Presets ───────────────────────────────────────────────
 st.subheader("Quick Load Sample Applicant")
 p1, p2, p3 = st.columns(3)
 
@@ -153,55 +129,55 @@ presets = {
         "age": 28, "gender": "male", "education": "High School",
         "income": 50000, "emp_exp": 3, "home": "RENT",
         "loan_amt": 10000, "intent": "PERSONAL", "int_rate": 11.0,
-        "cred_hist": 5, "credit_score": 620, "prev_default": "No"
+        "cred_hist": 5, "credit_score": 650, "prev_default": "No"
     }
 }
 
 preset = st.session_state.get("preset", None)
 vals = presets[preset] if preset else None
 
+# ─── Input form ────────────────────────────────────────────
 col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("Applicant Details")
-    age = st.slider("Age", 18, 70, vals["age"] if vals else 28)
+    age = st.slider("Age", 18, 70,
+                    vals["age"] if vals else 28)
     gender = st.selectbox("Gender", ["male", "female"],
-                          index=0 if not vals else ["male", "female"].index(vals["gender"]))
+                    index=0 if not vals else ["male", "female"].index(vals["gender"]))
     education = st.selectbox("Education",
-        ["High School", "Associate", "Bachelor", "Master", "Doctorate"],
-        index=0 if not vals else ["High School", "Associate", "Bachelor", "Master", "Doctorate"].index(vals["education"]))
+                    ["High School", "Associate", "Bachelor", "Master", "Doctorate"],
+                    index=0 if not vals else ["High School", "Associate", "Bachelor", "Master", "Doctorate"].index(vals["education"]))
     income = st.number_input("Annual Income (₹)",
-        min_value=10000, max_value=500000, step=5000,
-        value=vals["income"] if vals else 50000)
+                    min_value=10000, max_value=500000, step=5000,
+                    value=vals["income"] if vals else 50000)
     emp_exp = st.slider("Employment Experience (years)", 0, 20,
-        vals["emp_exp"] if vals else 3)
+                    vals["emp_exp"] if vals else 3)
     home = st.selectbox("Home Ownership", ["RENT", "OWN", "MORTGAGE", "OTHER"],
-        index=0 if not vals else ["RENT", "OWN", "MORTGAGE", "OTHER"].index(vals["home"]))
+                    index=0 if not vals else ["RENT", "OWN", "MORTGAGE", "OTHER"].index(vals["home"]))
 
 with col2:
     st.subheader("Loan Details")
     loan_amt = st.number_input("Loan Amount (₹)",
-        min_value=500, max_value=35000, step=500,
-        value=vals["loan_amt"] if vals else 10000)
+                    min_value=500, max_value=35000, step=500,
+                    value=vals["loan_amt"] if vals else 10000)
     intent = st.selectbox("Loan Purpose",
-        ["PERSONAL", "EDUCATION", "MEDICAL", "VENTURE", "HOMEIMPROVEMENT", "DEBTCONSOLIDATION"],
-        index=0 if not vals else ["PERSONAL", "EDUCATION", "MEDICAL", "VENTURE", "HOMEIMPROVEMENT", "DEBTCONSOLIDATION"].index(vals["intent"]))
+                    ["PERSONAL", "EDUCATION", "MEDICAL", "VENTURE", "HOMEIMPROVEMENT", "DEBTCONSOLIDATION"],
+                    index=0 if not vals else ["PERSONAL", "EDUCATION", "MEDICAL", "VENTURE", "HOMEIMPROVEMENT", "DEBTCONSOLIDATION"].index(vals["intent"]))
     int_rate = st.slider("Interest Rate (%)", 5.0, 24.0,
-        vals["int_rate"] if vals else 11.0, 0.1)
-
-    loan_pct_display = round(min(loan_amt / income, 0.66), 2)  # FIX: consistent cap
+                    vals["int_rate"] if vals else 11.0, 0.1)
+    loan_pct_display = round(min(loan_amt / income, 0.66), 2)
     st.metric("Loan % of Income", f"{loan_pct_display:.0%}")
-
     cred_hist = st.slider("Credit History Length (years)", 1, 30,
-        vals["cred_hist"] if vals else 5)
-    credit_score = st.slider("Credit Score", 390, 850,  # FIX: min changed from 300 → 390 (dataset min)
-        vals["credit_score"] if vals else 650)
+                    vals["cred_hist"] if vals else 5)
+    credit_score = st.slider("Credit Score", 390, 850,
+                    vals["credit_score"] if vals else 650)
     prev_default = st.selectbox("Previous Loan Defaults", ["No", "Yes"],
-        index=0 if not vals else ["No", "Yes"].index(vals["prev_default"]))
+                    index=0 if not vals else ["No", "Yes"].index(vals["prev_default"]))
 
 st.divider()
 
-# ─── PREDICT ────────────────────────────────────────────────
+# ─── Predict ───────────────────────────────────────────────
 if st.button("🔍 Analyze Loan Application", use_container_width=True):
 
     input_df, loan_pct = build_input(
@@ -210,17 +186,18 @@ if st.button("🔍 Analyze Loan Application", use_container_width=True):
         home, intent, prev_default
     )
 
+    # Predict — index[1] is P(default), so that's the risk score
     default_prob = xgb.predict_proba(input_df)[0][1]
-    prob = 1 - default_prob
-    risk = default_prob
-
+    risk = default_prob        # risk = probability of default
+    prob = 1 - default_prob    # approval probability = 1 - risk
     decision, icon, dtype = get_decision(risk)
 
+    # SHAP — positive = pushes toward approval, negative = pushes toward rejection
+    # We flip sign so positive = increases risk (rejection)
     shap_vals = explainer.shap_values(input_df)[0]
-    shap_vals_risk = -shap_vals
+    shap_vals_risk = -shap_vals  # flip: now positive = increases risk
 
     top_idx = abs(shap_vals_risk).argsort()[-3:][::-1]
-
     reasons = []
     for i in top_idx:
         direction = "increases risk" if shap_vals_risk[i] > 0 else "decreases risk"
@@ -228,6 +205,7 @@ if st.button("🔍 Analyze Loan Application", use_container_width=True):
             f"{feature_names[i]} = {input_df.iloc[0][feature_names[i]]:.2f} ({direction})"
         )
 
+    # ─── Results ───────────────────────────────────────────
     st.subheader("Analysis Results")
     r1, r2, r3 = st.columns(3)
     r1.metric("Decision", f"{icon} {decision}")
