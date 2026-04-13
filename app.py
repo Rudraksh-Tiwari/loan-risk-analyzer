@@ -16,7 +16,188 @@ st.set_page_config(
 )
 
 # ─── THEME ────────────────────────────────────────────────────────────────────
-st.markdown('<link rel="stylesheet" href="style.css">', unsafe_allow_html=True)
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.stApp {
+    background: #080c10 !important;
+    font-family: 'Syne', sans-serif !important;
+}
+
+.stApp::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(0,212,180,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,180,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+}
+
+#MainMenu, footer, header, .stDeployButton,
+[data-testid="stToolbar"], [data-testid="stDecoration"],
+[data-testid="stStatusWidget"] { display: none !important; }
+
+.block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+}
+
+h1, h2, h3, h4, p, div, span, label {
+    font-family: 'Syne', sans-serif !important;
+    color: #e8edf2 !important;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    border-bottom: 1px solid rgba(0,212,180,0.12);
+    background: rgba(8,12,16,0.95);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+}
+.logo-wrap { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: linear-gradient(135deg, #00d4b4, #0066ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; color: #080c10 !important;
+    font-family: 'Syne', sans-serif !important;
+}
+.logo-name { font-size: 16px; font-weight: 700; color: #fff !important; }
+.logo-sub {
+    font-size: 9px; color: #00d4b4 !important;
+    letter-spacing: 0.2em; font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+}
+.status-pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 14px;
+    border: 1px solid rgba(0,212,180,0.2);
+    border-radius: 20px;
+    background: rgba(0,212,180,0.05);
+}
+.status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #00d4b4;
+    box-shadow: 0 0 8px #00d4b4;
+    animation: blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-text {
+    font-size: 10px; color: #6b7f8e !important;
+    font-family: 'DM Mono', monospace !important; letter-spacing: 0.12em;
+}
+
+.sec-label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #00d4b4 !important; font-family: 'DM Mono', monospace !important;
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 16px; margin-top: 4px;
+}
+.sec-label::after {
+    content: ''; flex: 1; height: 1px;
+    background: rgba(0,212,180,0.15);
+}
+
+.stButton > button {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    color: #6b7f8e !important;
+    border-radius: 6px !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 8px 12px !important;
+    transition: all 0.2s !important;
+    letter-spacing: 0.05em !important;
+    width: 100% !important;
+}
+.stButton > button:hover {
+    border-color: rgba(0,212,180,0.4) !important;
+    color: #00d4b4 !important;
+    background: rgba(0,212,180,0.05) !important;
+}
+
+[data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 6px !important;
+}
+[data-baseweb="select"] span {
+    color: #e8edf2 !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 13px !important;
+}
+[data-baseweb="popover"] { background: #0e1520 !important; border: 1px solid rgba(0,212,180,0.15) !important; }
+[data-baseweb="menu"] { background: #0e1520 !important; }
+[data-baseweb="option"]:hover { background: rgba(0,212,180,0.08) !important; }
+
+.stNumberInput input {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    color: #e8edf2 !important;
+    border-radius: 6px !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 13px !important;
+}
+
+.stSlider [data-baseweb="slider"] > div:first-child { background: rgba(255,255,255,0.08) !important; }
+.stSlider [data-baseweb="slider"] [role="slider"] {
+    background: #00d4b4 !important;
+    border: 2px solid #00d4b4 !important;
+    box-shadow: 0 0 10px rgba(0,212,180,0.5) !important;
+}
+.stSlider [data-testid="stThumbValue"] {
+    color: #00d4b4 !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 12px !important;
+}
+.stSlider p, .stSlider label, .stSelectbox label, .stNumberInput label {
+    color: #4a5a6a !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    font-weight: 500 !important;
+}
+
+hr { border-color: rgba(0,212,180,0.08) !important; margin: 20px 0 !important; }
+
+[data-testid="stMetric"] {
+    background: rgba(255,255,255,0.02) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+    padding: 14px 16px !important;
+}
+[data-testid="stMetricLabel"] p {
+    color: #4a5a6a !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+}
+[data-testid="stMetricValue"] {
+    color: #e8edf2 !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 28px !important;
+    font-weight: 700 !important;
+}
+
+.stSpinner > div { border-top-color: #00d4b4 !important; }
+[data-testid="column"] { padding: 0 8px !important; }
+
+</style>
+""", unsafe_allow_html=True)
 
 # ─── TOPBAR ───────────────────────────────────────────────────────────────────
 st.markdown("""
