@@ -43,7 +43,7 @@ xgb, explainer, feature_names = load_model()
 
 # ─── Groq client ───────────────────────────────────────────
 import os
-client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "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"))
+client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "YOUR_API_KEY"))
 
 # ─── Helper functions ──────────────────────────────────────
 def get_decision(risk):
