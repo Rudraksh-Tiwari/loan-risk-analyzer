@@ -82,38 +82,88 @@ Write a clear, professional 3-4 sentence explanation for the applicant.
     return response.choices[0].message.content
 
 # ─── UI ────────────────────────────────────────────────────
-st.title("Loan Risk Analyzer")
+st.title("🏦 Loan Risk Analyzer")
 st.markdown("AI-powered loan decision system with explainable risk assessment")
 st.divider()
+
+# ─── Sample Presets ────────────────────────────────────────
+st.subheader("Quick Load Sample Applicant")
+p1, p2, p3 = st.columns(3)
+
+if p1.button("✅ Good Applicant", use_container_width=True):
+    st.session_state.preset = "good"
+if p2.button("❌ Bad Applicant", use_container_width=True):
+    st.session_state.preset = "bad"
+if p3.button("⚠️ Borderline Case", use_container_width=True):
+    st.session_state.preset = "borderline"
+
+st.divider()
+
+# ─── Preset values ─────────────────────────────────────────
+preset = st.session_state.get("preset", None)
+
+presets = {
+    "good": {
+        "age": 35, "gender": "male", "education": "Bachelor",
+        "income": 85000, "emp_exp": 8, "home": "OWN",
+        "loan_amt": 5000, "intent": "EDUCATION", "int_rate": 7.0,
+        "cred_hist": 12, "credit_score": 780, "prev_default": "No"
+    },
+    "bad": {
+        "age": 22, "gender": "female", "education": "High School",
+        "income": 15000, "emp_exp": 0, "home": "RENT",
+        "loan_amt": 30000, "intent": "PERSONAL", "int_rate": 22.0,
+        "cred_hist": 1, "credit_score": 380, "prev_default": "Yes"
+    },
+    "borderline": {
+        "age": 29, "gender": "male", "education": "Associate",
+        "income": 42000, "emp_exp": 3, "home": "RENT",
+        "loan_amt": 12000, "intent": "MEDICAL", "int_rate": 13.5,
+        "cred_hist": 4, "credit_score": 580, "prev_default": "No"
+    }
+}
+
+vals = presets[preset] if preset else None
+
+col1, col2 = st.columns([1, 1])
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("Applicant Details")
-
-    age = st.slider("Age", 18, 70, 28)
-    gender = st.selectbox("Gender", ["male", "female"])
-    education = st.selectbox("Education", 
-                  ["High School", "Associate", "Bachelor", "Master", "Doctorate"])
-    income = st.number_input("Annual Income (₹)", 
-                  min_value=10000, max_value=500000, value=50000, step=5000)
-    emp_exp = st.slider("Employment Experience (years)", 0, 20, 3)
-    home = st.selectbox("Home Ownership", ["RENT", "OWN", "MORTGAGE", "OTHER"])
+    age = st.slider("Age", 18, 70, 
+                    vals["age"] if vals else 28)
+    gender = st.selectbox("Gender", ["male", "female"],
+                    index=0 if not vals else ["male","female"].index(vals["gender"]))
+    education = st.selectbox("Education",
+                    ["High School","Associate","Bachelor","Master","Doctorate"],
+                    index=0 if not vals else ["High School","Associate","Bachelor","Master","Doctorate"].index(vals["education"]))
+    income = st.number_input("Annual Income (₹)",
+                    min_value=10000, max_value=500000, step=5000,
+                    value=vals["income"] if vals else 50000)
+    emp_exp = st.slider("Employment Experience (years)", 0, 20,
+                    vals["emp_exp"] if vals else 3)
+    home = st.selectbox("Home Ownership", ["RENT","OWN","MORTGAGE","OTHER"],
+                    index=0 if not vals else ["RENT","OWN","MORTGAGE","OTHER"].index(vals["home"]))
 
 with col2:
     st.subheader("Loan Details")
-
-    loan_amt = st.number_input("Loan Amount (₹)", 
-                  min_value=500, max_value=35000, value=10000, step=500)
-    intent = st.selectbox("Loan Purpose", 
-                  ["PERSONAL", "EDUCATION", "MEDICAL", 
-                   "VENTURE", "HOMEIMPROVEMENT", "DEBTCONSOLIDATION"])
-    int_rate = st.slider("Interest Rate (%)", 5.0, 24.0, 11.0, 0.1)
+    loan_amt = st.number_input("Loan Amount (₹)",
+                    min_value=500, max_value=35000, step=500,
+                    value=vals["loan_amt"] if vals else 10000)
+    intent = st.selectbox("Loan Purpose",
+                    ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"],
+                    index=0 if not vals else ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"].index(vals["intent"]))
+    int_rate = st.slider("Interest Rate (%)", 5.0, 24.0,
+                    vals["int_rate"] if vals else 11.0, 0.1)
     loan_pct = round(loan_amt / income, 2)
     st.metric("Loan % of Income", f"{loan_pct:.0%}")
-    cred_hist = st.slider("Credit History Length (years)", 1, 30, 5)
-    credit_score = st.slider("Credit Score", 300, 850, 650)
-    prev_default = st.selectbox("Previous Loan Defaults", ["No", "Yes"])
+    cred_hist = st.slider("Credit History Length (years)", 1, 30,
+                    vals["cred_hist"] if vals else 5)
+    credit_score = st.slider("Credit Score", 300, 850,
+                    vals["credit_score"] if vals else 650)
+    prev_default = st.selectbox("Previous Loan Defaults", ["No","Yes"],
+                    index=0 if not vals else ["No","Yes"].index(vals["prev_default"]))
 
 st.divider()
 
