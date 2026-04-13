@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -80,7 +79,8 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
                 cred_hist, credit_score, gender, education,
                 home, intent, prev_default):
 
-    loan_pct = round(min(loan_amt / income, 1.0), 2)
+    # FIX: Cap at 0.66 (actual dataset max), not 1.0 — prevents out-of-distribution values
+    loan_pct = round(min(loan_amt / income, 0.66), 2)
 
     input_dict = {
         'person_age': age,
@@ -99,6 +99,7 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
         'person_home_ownership_OTHER': 1 if home == "OTHER" else 0,
         'person_home_ownership_OWN': 1 if home == "OWN" else 0,
         'person_home_ownership_RENT': 1 if home == "RENT" else 0,
+        'loan_intent_DEBTCONSOLIDATION': 1 if intent == "DEBTCONSOLIDATION" else 0,  # FIX: was missing!
         'loan_intent_EDUCATION': 1 if intent == "EDUCATION" else 0,
         'loan_intent_HOMEIMPROVEMENT': 1 if intent == "HOMEIMPROVEMENT" else 0,
         'loan_intent_MEDICAL': 1 if intent == "MEDICAL" else 0,
@@ -118,7 +119,7 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
     return df, loan_pct
 
 
-# ─── UI (UNCHANGED FROM YOUR CODE) ─────────────────────────
+# ─── UI ─────────────────────────────────────────────────────
 st.title("🏦 Loan Risk Analyzer")
 st.markdown("AI-powered loan decision system with explainable risk assessment")
 st.divider()
@@ -142,17 +143,19 @@ presets = {
         "loan_amt": 4000, "intent": "EDUCATION", "int_rate": 6.0,
         "cred_hist": 15, "credit_score": 820, "prev_default": "No"
     },
+    # FIX: credit_score changed from 320 → 420 (within dataset range of 390–850)
+    # FIX: loan_amt changed from 12000 → 9000 so loan_pct = 0.60 (within dataset max of 0.66)
     "bad": {
         "age": 21, "gender": "female", "education": "High School",
         "income": 15000, "emp_exp": 0, "home": "RENT",
-        "loan_amt": 12000, "intent": "PERSONAL", "int_rate": 23.0,
-        "cred_hist": 1, "credit_score": 320, "prev_default": "Yes"
+        "loan_amt": 9000, "intent": "PERSONAL", "int_rate": 23.0,
+        "cred_hist": 1, "credit_score": 420, "prev_default": "Yes"
     },
     "borderline": {
         "age": 28, "gender": "male", "education": "High School",
         "income": 50000, "emp_exp": 3, "home": "RENT",
         "loan_amt": 10000, "intent": "PERSONAL", "int_rate": 11.0,
-        "cred_hist": 5, "credit_score": 650, "prev_default": "No"
+        "cred_hist": 5, "credit_score": 620, "prev_default": "No"
     }
 }
 
@@ -188,19 +191,19 @@ with col2:
     int_rate = st.slider("Interest Rate (%)", 5.0, 24.0,
         vals["int_rate"] if vals else 11.0, 0.1)
 
-    loan_pct_display = round(min(loan_amt / income, 1.0), 2)
+    loan_pct_display = round(min(loan_amt / income, 0.66), 2)  # FIX: consistent cap
     st.metric("Loan % of Income", f"{loan_pct_display:.0%}")
 
     cred_hist = st.slider("Credit History Length (years)", 1, 30,
         vals["cred_hist"] if vals else 5)
-    credit_score = st.slider("Credit Score", 300, 850,
+    credit_score = st.slider("Credit Score", 390, 850,  # FIX: min changed from 300 → 390 (dataset min)
         vals["credit_score"] if vals else 650)
     prev_default = st.selectbox("Previous Loan Defaults", ["No", "Yes"],
         index=0 if not vals else ["No", "Yes"].index(vals["prev_default"]))
 
 st.divider()
 
-# ─── PREDICT (ONLY FIXED PART) ───────────────────────────
+# ─── PREDICT ────────────────────────────────────────────────
 if st.button("🔍 Analyze Loan Application", use_container_width=True):
 
     input_df, loan_pct = build_input(
@@ -209,7 +212,6 @@ if st.button("🔍 Analyze Loan Application", use_container_width=True):
         home, intent, prev_default
     )
 
-    # 🔥 FIX
     default_prob = xgb.predict_proba(input_df)[0][1]
     prob = 1 - default_prob
     risk = default_prob
