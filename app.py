@@ -170,11 +170,11 @@ if st.button(" Analyze Loan Application", use_container_width=True):
 
     # Decision banner
     if dtype == "success":
-        st.success(f"✅ Loan Approved — Low risk applicant")
+        st.success(f" Loan Approved — Low risk applicant")
     elif dtype == "warning":
-        st.warning(f"⚠️ Flagged for Manual Review")
+        st.warning(f" Flagged for Manual Review")
     else:
-        st.error(f"❌ Loan Rejected — High risk applicant")
+        st.error(f" Loan Rejected — High risk applicant")
 
     # SHAP reasons
     st.subheader("Top Risk Factors")

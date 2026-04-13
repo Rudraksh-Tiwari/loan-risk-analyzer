@@ -1,0 +1,30 @@
+[33mcommit 677675d0d8cfa9a3a2ae3a39f9d7b2a75b521839[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: unknown <rudraksh78779@gmail.com>
+Date:   Mon Apr 13 07:27:57 2026 +0530
+
+    Remove hardcoded API key from notebook and app.py
+
+[33mcommit cdf951066c9abf42eb63d347893d0f43a252358b[m
+Merge: a6caf9e 24c6c3d
+Author: unknown <rudraksh78779@gmail.com>
+Date:   Mon Apr 13 07:24:41 2026 +0530
+
+    Resolve merge conflict in README.md
+
+[33mcommit a6caf9ea804a0dfd412fbae27772f0feca26fb37[m
+Author: unknown <rudraksh78779@gmail.com>
+Date:   Mon Apr 13 07:17:11 2026 +0530
+
+    Loan Risk Analyzer - ML + SHAP + LLM + Streamlit
+
+[33mcommit 24c6c3d5afdf40c9f740e3edbbab7615fcff0a44[m[33m ([m[1;31morigin/main[m[33m)[m
+Author: Rudraksh-Tiwari <161870045+Rudraksh-Tiwari@users.noreply.github.com>
+Date:   Mon Apr 13 07:15:16 2026 +0530
+
+    Revise README for clarity and detail
+
+[33mcommit 2b981978c10af4f29babd31a47f79aadd30acb34[m
+Author: Rudraksh-Tiwari <161870045+Rudraksh-Tiwari@users.noreply.github.com>
+Date:   Mon Apr 13 07:14:02 2026 +0530
+
+    Initial commit
