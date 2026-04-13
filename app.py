@@ -403,8 +403,4 @@ with right:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-<<<<<<< HEAD
 st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
-=======
-st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
->>>>>>> d47dd69cd2f754b6611f44760a3e9ad88d76508e
