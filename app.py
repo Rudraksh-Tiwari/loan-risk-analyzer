@@ -18,6 +18,9 @@ st.set_page_config(
 
 # ── Inject CSS via st.html (never leaks as raw text unlike st.markdown) ───────
 st.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
 
 .stApp { background: #080c10 !important; }
 
@@ -208,7 +211,7 @@ def load_model():
     return xgb, explainer, X_train.columns.tolist()
 
 xgb, explainer, feature_names = load_model()
-client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "YOUR_API_KEY"))
+client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "your_key_here"))
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 def get_decision(risk):
