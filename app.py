@@ -18,9 +18,6 @@ st.set_page_config(
 
 # ── Inject CSS via st.html (never leaks as raw text unlike st.markdown) ───────
 st.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-*, *::before, *::after { box-sizing: border-box; }
 
 .stApp { background: #080c10 !important; }
 
