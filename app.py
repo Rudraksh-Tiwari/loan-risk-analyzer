@@ -525,41 +525,288 @@ if analyze:
             f"{feature_names[i]} = {input_df.iloc[0][feature_names[i]]:.2f} ({d})"
         )
 
-    section("Top risk factors")
+    section("Feature impact · SHAP waterfall")
 
-    for idx, i in enumerate(top_idx):
-        up    = shap_vals_risk[i] > 0
-        tc    = "#ff5050" if up else "#00d4b4"
-        tbg   = "rgba(255,80,80,0.08)"  if up else "rgba(0,212,180,0.08)"
-        tbd   = "rgba(255,80,80,0.18)"  if up else "rgba(0,212,180,0.18)"
-        arrow = "▲ raises risk"         if up else "▼ lowers risk"
-        clean = (feature_names[i]
-                 .replace("person_","").replace("loan_","").replace("cb_","")
-                 .replace("_"," ").title())
-        rv    = input_df.iloc[0][feature_names[i]]
-        dv    = f"{int(rv):,}" if rv == int(rv) else f"{rv:.2f}"
+    # ── Build top-8 SHAP data for chart ──────────────────
+    top8_idx = abs(shap_vals_risk).argsort()[-8:][::-1]
 
-        st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:14px;
-                    background:rgba(255,255,255,0.02);
-                    border:1px solid rgba(255,255,255,0.05);
-                    border-radius:8px;padding:13px 16px;margin-bottom:8px">
-            <span style="font-size:10px;font-family:'DM Mono',monospace;
-                         color:#2a3a4a;min-width:24px;font-weight:500">
-                0{idx+1}
-            </span>
-            <span style="font-size:13px;font-family:'DM Mono',monospace;
-                         color:#6b7f8e;flex:1">{clean}</span>
-            <span style="font-size:13px;font-family:'DM Mono',monospace;
-                         color:#c8d4e0;font-weight:500">{dv}</span>
-            <span style="font-size:9px;padding:4px 10px;border-radius:5px;
-                         background:{tbg};color:{tc};border:1px solid {tbd};
-                         font-family:'DM Mono',monospace;
-                         letter-spacing:0.06em;white-space:nowrap">
-                {arrow}
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
+    def clean_name(fn):
+        return (fn.replace("person_","").replace("loan_","")
+                  .replace("cb_","").replace("_"," ").title())
+
+    chart_rows = []
+    for i in top8_idx:
+        sv   = float(shap_vals_risk[i])
+        rv   = float(input_df.iloc[0][feature_names[i]])
+        dv   = f"{int(rv):,}" if rv == int(rv) else f"{rv:.2f}"
+        chart_rows.append({
+            "label": clean_name(feature_names[i]),
+            "value": dv,
+            "shap":  round(sv, 4),
+        })
+
+    base_val   = float(explainer.expected_value)
+    final_val  = float(xgb.predict_proba(input_df)[0][1])
+    max_abs    = max(abs(r["shap"]) for r in chart_rows) or 1
+
+    import json
+    rows_json     = json.dumps(chart_rows)
+    base_json     = json.dumps(round(base_val, 4))
+    final_json    = json.dumps(round(final_val, 4))
+    maxabs_json   = json.dumps(round(max_abs, 4))
+
+    shap_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700&display=swap');
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    color: #e8edf2;
+    padding: 0 2px 12px;
+  }}
+
+  /* ── Waterfall chart ── */
+  .chart-wrap {{ width: 100%; }}
+
+  .row {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 7px;
+    position: relative;
+    cursor: default;
+  }}
+  .row:hover .bar-fill {{ filter: brightness(1.18); }}
+  .row:hover .tooltip  {{ opacity: 1; pointer-events: auto; }}
+
+  .feat-label {{
+    font-size: 11px;
+    color: #6b7f8e;
+    width: 148px;
+    min-width: 148px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+  }}
+
+  .bar-track {{
+    flex: 1;
+    height: 26px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 5px;
+    position: relative;
+    overflow: visible;
+  }}
+
+  /* centre line */
+  .bar-track::after {{
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.07);
+    transform: translateX(-50%);
+  }}
+
+  .bar-fill {{
+    position: absolute;
+    top: 3px; bottom: 3px;
+    border-radius: 3px;
+    transition: width 0.55s cubic-bezier(.22,.61,.36,1),
+                left  0.55s cubic-bezier(.22,.61,.36,1);
+  }}
+  .bar-fill.risk  {{ background: linear-gradient(90deg,#c0392b,#ff5050); }}
+  .bar-fill.safe  {{ background: linear-gradient(90deg,#00d4b4,#00a896); }}
+
+  .shap-val {{
+    font-size: 10px;
+    min-width: 52px;
+    text-align: left;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }}
+  .shap-val.risk {{ color: #ff5050; }}
+  .shap-val.safe {{ color: #00d4b4; }}
+
+  /* tooltip */
+  .tooltip {{
+    position: absolute;
+    left: 162px;
+    top: -38px;
+    background: #0e1520;
+    border: 1px solid rgba(0,212,180,0.2);
+    border-radius: 7px;
+    padding: 7px 12px;
+    font-size: 10px;
+    color: #c8d4e0;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 99;
+    letter-spacing: 0.04em;
+  }}
+  .tooltip span {{ color: #00d4b4; }}
+
+  /* ── Summary strip ── */
+  .summary {{
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 18px 0 4px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+  }}
+  .s-block {{
+    flex: 1;
+    padding: 10px 14px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+  }}
+  .s-block:last-child {{ border-right: none; }}
+  .s-label {{
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #2a3a4a;
+    margin-bottom: 4px;
+  }}
+  .s-val {{
+    font-size: 18px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+  }}
+  .s-val.base   {{ color: #4a5a6a; }}
+  .s-val.pos    {{ color: #ff5050; }}
+  .s-val.neg    {{ color: #00d4b4; }}
+  .s-val.final  {{ color: #e8edf2; }}
+
+  /* ── Legend ── */
+  .legend {{
+    display: flex;
+    gap: 20px;
+    margin-bottom: 14px;
+    justify-content: flex-end;
+  }}
+  .leg-item {{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    color: #4a5a6a;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }}
+  .leg-dot {{
+    width: 8px; height: 8px;
+    border-radius: 2px;
+  }}
+</style>
+</head>
+<body>
+<div class="chart-wrap">
+
+  <div class="legend">
+    <div class="leg-item">
+      <div class="leg-dot" style="background:#ff5050"></div>
+      Raises risk
+    </div>
+    <div class="leg-item">
+      <div class="leg-dot" style="background:#00d4b4"></div>
+      Lowers risk
+    </div>
+  </div>
+
+  <div id="rows"></div>
+
+  <div class="summary" id="summary"></div>
+
+</div>
+
+<script>
+const rows     = {rows_json};
+const baseVal  = {base_json};
+const finalVal = {final_json};
+const maxAbs   = {maxabs_json};
+
+const container = document.getElementById('rows');
+
+rows.forEach(r => {{
+  const pct    = (Math.abs(r.shap) / maxAbs) * 46;  // max 46% each side
+  const isRisk = r.shap > 0;
+  const cls    = isRisk ? 'risk' : 'safe';
+  const sign   = isRisk ? '+' : '';
+
+  // bar starts at centre (50%), extends left or right
+  const left  = isRisk ? '50%' : `${{50 - pct}}%`;
+  const width = `${{pct}}%`;
+
+  const div = document.createElement('div');
+  div.className = 'row';
+  div.innerHTML = `
+    <div class="feat-label" title="${{r.label}}">${{r.label}}</div>
+    <div class="bar-track">
+      <div class="bar-fill ${{cls}}"
+           style="left:${{left}};width:0%"
+           data-left="${{left}}" data-width="${{width}}">
+      </div>
+      <div class="tooltip">
+        ${{r.label}} = <span>${{r.value}}</span> &nbsp;|&nbsp; SHAP: <span>${{sign}}${{r.shap.toFixed(4)}}</span>
+      </div>
+    </div>
+    <div class="shap-val ${{cls}}">${{sign}}${{r.shap.toFixed(3)}}</div>
+  `;
+  container.appendChild(div);
+}});
+
+// Animate bars after paint
+requestAnimationFrame(() => {{
+  setTimeout(() => {{
+    document.querySelectorAll('.bar-fill').forEach(el => {{
+      el.style.width = el.dataset.width;
+      el.style.left  = el.dataset.left;
+    }});
+  }}, 60);
+}});
+
+// Summary strip
+const posSum = rows.filter(r=>r.shap>0).reduce((a,r)=>a+r.shap,0);
+const negSum = rows.filter(r=>r.shap<0).reduce((a,r)=>a+r.shap,0);
+const summary = document.getElementById('summary');
+summary.innerHTML = `
+  <div class="s-block">
+    <div class="s-label">Base rate</div>
+    <div class="s-val base">${{(baseVal*100).toFixed(1)}}%</div>
+  </div>
+  <div class="s-block">
+    <div class="s-label">Risk factors ▲</div>
+    <div class="s-val pos">+${{(posSum*100).toFixed(1)}}%</div>
+  </div>
+  <div class="s-block">
+    <div class="s-label">Safe factors ▼</div>
+    <div class="s-val neg">${{(negSum*100).toFixed(1)}}%</div>
+  </div>
+  <div class="s-block">
+    <div class="s-label">Final risk score</div>
+    <div class="s-val final">${{(finalVal*100).toFixed(1)}}%</div>
+  </div>
+`;
+</script>
+</body>
+</html>
+"""
+
+    import streamlit.components.v1 as components
+    components.html(shap_html, height=340, scrolling=False)
 
     st.divider()
 
