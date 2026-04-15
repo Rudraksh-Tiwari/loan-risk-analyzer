@@ -567,7 +567,7 @@ if analyze:
     background: transparent;
     font-family: 'DM Mono', monospace;
     color: #e8edf2;
-    padding: 0 2px 12px;
+    padding: 0 2px 28px;
   }}
 
   /* ── Waterfall chart ── */
@@ -806,7 +806,7 @@ summary.innerHTML = `
 """
 
     import streamlit.components.v1 as components
-    components.html(shap_html, height=340, scrolling=False)
+    components.html(shap_html, height=420, scrolling=False)
 
     st.divider()
 
