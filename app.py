@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── Inject CSS via st.html (never leaks as raw text unlike st.markdown) ───────
+# ── Inject CSS via st.html 
 st.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -191,7 +191,7 @@ hr {
 </style>
 """)
 
-# ─── MODEL ────────────────────────────────────────────────────────────────────
+# ─── MODEL ───
 @st.cache_resource
 def load_model():
     df = pd.read_csv("loan_data.csv")
@@ -211,9 +211,15 @@ def load_model():
     return xgb, explainer, X_train.columns.tolist()
 
 xgb, explainer, feature_names = load_model()
-client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "your_key_here"))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
+if not GROQ_API_KEY:
+    st.warning(
+        "GROQ_API_KEY is not configured. AI explanation will be disabled until you set this environment variable."
+    )
+
+# ─── HELPERS ─────
 def get_decision(risk):
     if risk < 0.3:   return "APPROVED",          "success"
     elif risk < 0.7: return "FLAGGED FOR REVIEW", "warning"
@@ -232,12 +238,25 @@ Rules:
 - FLAGGED: say a human will review it and roughly why
 - No formal letter format. No ML jargon. Plain English only. Max 3 sentences."""
 
-    response = client_groq.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=150
-    )
-    return response.choices[0].message.content
+    if not client_groq:
+        return (
+            "AI explanation unavailable because GROQ_API_KEY is not configured. "
+            "Set GROQ_API_KEY in your environment before starting the app."
+        )
+
+    try:
+        response = client_groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150
+        )
+        return response.choices[0].message.content
+    except Exception:
+        return (
+            "AI explanation could not be generated. Verify GROQ_API_KEY and network access, "
+            "then restart the app."
+        )
+
 
 def build_input(age, income, emp_exp, loan_amt, int_rate,
                 cred_hist, credit_score, gender, education,
@@ -305,9 +324,9 @@ presets = {
 preset = st.session_state.get("preset", None)
 vals   = presets[preset] if preset else None
 
-# ═════════════════════════════════════════════════════════
+
 # TOPBAR
-# ═════════════════════════════════════════════════════════
+
 st.html("""
 <div style="
     display:flex;align-items:center;justify-content:space-between;
@@ -350,9 +369,9 @@ st.html("""
 </div>
 """)
 
-# ═════════════════════════════════════════════════════════
+
 # QUICK LOAD
-# ═════════════════════════════════════════════════════════
+
 section("Quick load sample")
 b1, b2, b3 = st.columns(3)
 if b1.button("✓  Good applicant"):
@@ -364,9 +383,9 @@ if b3.button("⚠  Borderline"):
 
 st.divider()
 
-# ═════════════════════════════════════════════════════════
+
 # APPLICANT DETAILS
-# ═════════════════════════════════════════════════════════
+
 section("Applicant details")
 
 c1, c2 = st.columns(2)
@@ -394,9 +413,8 @@ emp_exp = st.slider("Employment experience (years)", 0, 20,
 
 st.divider()
 
-# ═════════════════════════════════════════════════════════
 # LOAN DETAILS
-# ═════════════════════════════════════════════════════════
+
 section("Loan details")
 
 loan_amt = st.number_input("Loan amount (₹)",
@@ -429,9 +447,9 @@ with c8:
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 analyze = st.button("⟡  ANALYZE APPLICATION", use_container_width=True)
 
-# ═════════════════════════════════════════════════════════
+
 # RESULTS — shown below inputs after clicking analyze
-# ═════════════════════════════════════════════════════════
+
 if analyze:
     input_df, loan_pct = build_input(
         age, income, emp_exp, loan_amt, int_rate,
@@ -460,7 +478,7 @@ if analyze:
     st.divider()
     section("Analysis results")
 
-    # ── Decision banner ──────────────────────────────────
+    # ── Decision banner ─────
     st.markdown(f"""
     <div style="background:{bg};border:1px solid {border};border-radius:10px;
                 padding:22px 26px;margin-bottom:16px;
@@ -484,12 +502,12 @@ if analyze:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Metrics ──────────────────────────────────────────
+    # ── Metrics ────────
     m1, m2 = st.columns(2)
     m1.metric("Approval probability", f"{prob:.0%}")
     m2.metric("Risk score",           f"{risk:.0%}")
 
-    # ── Risk bar ─────────────────────────────────────────
+    # ── Risk bar ───────
     st.markdown(f"""
     <div style="margin:14px 0 4px">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px">
@@ -513,7 +531,7 @@ if analyze:
 
     st.divider()
 
-    # ── SHAP factors ─────────────────────────────────────
+    # ── SHAP factors ─────
     shap_vals      = explainer.shap_values(input_df)[0]
     shap_vals_risk = -shap_vals
     top_idx        = abs(shap_vals_risk).argsort()[-3:][::-1]
@@ -527,7 +545,7 @@ if analyze:
 
     section("Feature impact · SHAP waterfall")
 
-    # ── Build top-8 SHAP data for chart ──────────────────
+    # ── Build top-8 SHAP data for chart ──
     top8_idx = abs(shap_vals_risk).argsort()[-8:][::-1]
 
     def clean_name(fn):
@@ -567,7 +585,7 @@ if analyze:
     background: transparent;
     font-family: 'DM Mono', monospace;
     color: #e8edf2;
-    padding: 0 2px 12px;
+    padding: 0 2px 28px;
   }}
 
   /* ── Waterfall chart ── */
@@ -806,11 +824,11 @@ summary.innerHTML = `
 """
 
     import streamlit.components.v1 as components
-    components.html(shap_html, height=340, scrolling=False)
+    components.html(shap_html, height=420, scrolling=False)
 
     st.divider()
 
-    # ── AI Explanation ───────────────────────────────────
+    # ── AI Explanation ─────────
     section("AI explanation")
     with st.spinner("Generating..."):
         explanation = get_llm_explanation(prob, risk, decision, reasons)
