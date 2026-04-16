@@ -211,13 +211,7 @@ def load_model():
     return xgb, explainer, X_train.columns.tolist()
 
 xgb, explainer, feature_names = load_model()
-def _get_groq_key():
-    try:
-        return st.secrets["GROQ_API_KEY"]
-    except Exception:
-        return os.environ.get("GROQ_API_KEY", "")
-
-client_groq = Groq(api_key=_get_groq_key())
+client_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", "your_key_here"))
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 def get_decision(risk):
@@ -573,7 +567,7 @@ if analyze:
     background: transparent;
     font-family: 'DM Mono', monospace;
     color: #e8edf2;
-    padding: 0 2px 28px;
+    padding: 0 2px 12px;
   }}
 
   /* ── Waterfall chart ── */
@@ -812,7 +806,7 @@ summary.innerHTML = `
 """
 
     import streamlit.components.v1 as components
-    components.html(shap_html, height=420, scrolling=False)
+    components.html(shap_html, height=340, scrolling=False)
 
     st.divider()
 
