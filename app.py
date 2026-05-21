@@ -211,12 +211,24 @@ def load_model():
     return xgb, explainer, X_train.columns.tolist()
 
 xgb, explainer, feature_names = load_model()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
+HARDCODED_GROQ_API_KEY = ""
+
+
+def get_groq_api_key():
+    return (
+        HARDCODED_GROQ_API_KEY
+        or os.environ.get("GROQ_API_KEY")
+        or st.secrets.get("GROQ_API_KEY")
+    )
+
+
+GROQ_API_KEY = get_groq_api_key()
 client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 if not GROQ_API_KEY:
     st.warning(
-        "GROQ_API_KEY is not configured. AI explanation will be disabled until you set this environment variable."
+        "GROQ_API_KEY is not configured. Add it to .streamlit/secrets.toml or set it as an environment variable."
     )
 
 # ─── HELPERS ─────
@@ -258,10 +270,62 @@ Rules:
         )
 
 
+TRAINING_RANGES = {
+    "Age": (20, 144),
+    "Annual income": (8000, 7200766),
+    "Employment experience": (0, 125),
+    "Loan amount": (500, 35000),
+    "Interest rate": (5.42, 20.0),
+    "Credit score": (390, 850),
+    "Credit history": (2, 30),
+    "Loan percent of income": (0.0, 0.66),
+}
+
+
+def loan_percent_income(loan_amt, income):
+    if income <= 0:
+        return 0
+    return round(loan_amt / income, 4)
+
+
+def range_note(label, value):
+    low, high = TRAINING_RANGES[label]
+    if value < low:
+        return f"{label} is below the training range ({low:g}-{high:g})."
+    if value > high:
+        return f"{label} is above the training range ({low:g}-{high:g})."
+    return None
+
+
+def collect_input_notes(age, income, emp_exp, loan_amt, int_rate,
+                        cred_hist, credit_score, loan_pct):
+    checks = {
+        "Age": age,
+        "Annual income": income,
+        "Employment experience": emp_exp,
+        "Loan amount": loan_amt,
+        "Interest rate": int_rate,
+        "Credit score": credit_score,
+        "Credit history": cred_hist,
+        "Loan percent of income": loan_pct,
+    }
+    notes = [note for label, value in checks.items()
+             if (note := range_note(label, value))]
+
+    if emp_exp > max(age - 14, 0):
+        notes.append("Employment experience is unusually high for the applicant age.")
+    if cred_hist > max(age - 18, 0):
+        notes.append("Credit history is unusually high for the applicant age.")
+    if loan_amt > income:
+        notes.append("Loan amount is greater than annual income.")
+
+    return notes
+
+
 def build_input(age, income, emp_exp, loan_amt, int_rate,
                 cred_hist, credit_score, gender, education,
                 home, intent, prev_default):
-    loan_pct = round(min(loan_amt / income, 0.66), 2)
+    loan_pct = loan_percent_income(loan_amt, income)
     input_dict = {
         'person_age': age, 'person_income': income,
         'person_emp_exp': emp_exp, 'loan_amnt': loan_amt,
@@ -287,6 +351,106 @@ def build_input(age, income, emp_exp, loan_amt, int_rate,
     for col in feature_names:
         if col not in df: df[col] = 0
     return df[feature_names], loan_pct
+
+
+def round_offer_amount(amount):
+    if amount < 500:
+        return max(int(amount), 1)
+    return int(round(amount / 500) * 500)
+
+
+def estimate_risk_for_amount(age, income, emp_exp, loan_amt, int_rate,
+                             cred_hist, credit_score, gender, education,
+                             home, intent, prev_default):
+    offer_df, _ = build_input(
+        age, income, emp_exp, loan_amt, int_rate,
+        cred_hist, credit_score, gender, education,
+        home, intent, prev_default
+    )
+    return float(xgb.predict_proba(offer_df)[0][1])
+
+
+def calculate_loan_offer(age, income, emp_exp, requested_amt, int_rate,
+                         cred_hist, credit_score, gender, education,
+                         home, intent, prev_default):
+    if requested_amt <= 1:
+        return 1, estimate_risk_for_amount(
+            age, income, emp_exp, 1, int_rate, cred_hist, credit_score,
+            gender, education, home, intent, prev_default
+        ), "approved"
+
+    candidates = np.linspace(1, requested_amt, 80)
+    scored = []
+    for amount in candidates:
+        rounded_amount = min(round_offer_amount(amount), requested_amt)
+        risk_at_amount = estimate_risk_for_amount(
+            age, income, emp_exp, rounded_amount, int_rate,
+            cred_hist, credit_score, gender, education, home, intent,
+            prev_default
+        )
+        scored.append((rounded_amount, risk_at_amount))
+
+    approved = [row for row in scored if row[1] < 0.3]
+    if approved:
+        return max(approved, key=lambda row: row[0]) + ("approved",)
+
+    review = [row for row in scored if row[1] < 0.7]
+    if review:
+        return max(review, key=lambda row: row[0]) + ("review",)
+
+    fallback_offer = min(
+        round_offer_amount(min(requested_amt, max(income * 0.10, 1))),
+        requested_amt
+    )
+    fallback_risk = estimate_risk_for_amount(
+        age, income, emp_exp, fallback_offer, int_rate,
+        cred_hist, credit_score, gender, education, home, intent, prev_default
+    )
+    return fallback_offer, fallback_risk, "manual_review"
+
+
+def get_llm_loan_offer(requested_amt, offer_amt, offer_risk, offer_status,
+                       decision, risk):
+    prompt = f"""You are a bank loan officer. Write 2-3 short sentences to the applicant.
+
+Original decision: {decision}
+Requested loan amount: INR {requested_amt:,.0f}
+Requested loan risk score: {risk:.0%}
+Recommended offer amount: INR {offer_amt:,.0f}
+Recommended offer risk score: {offer_risk:.0%}
+Offer status: {offer_status}
+
+Rules:
+- If the requested amount is not suitable, clearly say the bank cannot offer the full requested amount.
+- State the recommended amount the bank may offer for this situation.
+- Mention that the offer is based on the applicant profile and risk assessment.
+- Do not use ML jargon. No greeting or sign-off. Max 3 sentences."""
+
+    if not client_groq:
+        if offer_amt < requested_amt:
+            return (
+                f"We cannot offer the full requested amount of INR {requested_amt:,.0f} "
+                f"for this profile. Based on the current risk assessment, the bank may "
+                f"offer approximately INR {offer_amt:,.0f} instead."
+            )
+        return (
+            f"The requested amount of INR {requested_amt:,.0f} is within the amount "
+            "the bank may offer for this profile."
+        )
+
+    try:
+        response = client_groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=140
+        )
+        return response.choices[0].message.content
+    except Exception:
+        return (
+            f"The bank may offer approximately INR {offer_amt:,.0f} for this situation, "
+            f"but cannot confirm the full requested amount of INR {requested_amt:,.0f}."
+        )
+
 
 def section(label):
     """Renders a styled section header"""
@@ -390,7 +554,9 @@ section("Applicant details")
 
 c1, c2 = st.columns(2)
 with c1:
-    age = st.slider("Age", 18, 70, vals["age"] if vals else 28)
+    age = st.number_input("Age",
+        min_value=18, step=1,
+        value=vals["age"] if vals else 28)
 with c2:
     gender = st.selectbox("Gender", ["male", "female"],
         index=0 if not vals else ["male","female"].index(vals["gender"]))
@@ -405,11 +571,12 @@ with c4:
         index=0 if not vals else ["RENT","OWN","MORTGAGE","OTHER"].index(vals["home"]))
 
 income = st.number_input("Annual income (₹)",
-    min_value=10000, max_value=500000, step=5000,
+    min_value=1, step=5000,
     value=vals["income"] if vals else 50000)
 
-emp_exp = st.slider("Employment experience (years)", 0, 20,
-    vals["emp_exp"] if vals else 3)
+emp_exp = st.number_input("Employment experience (years)",
+    min_value=0, step=1,
+    value=vals["emp_exp"] if vals else 3)
 
 st.divider()
 
@@ -418,7 +585,7 @@ st.divider()
 section("Loan details")
 
 loan_amt = st.number_input("Loan amount (₹)",
-    min_value=500, max_value=35000, step=500,
+    min_value=1, step=500,
     value=vals["loan_amt"] if vals else 10000)
 
 c5, c6 = st.columns(2)
@@ -430,18 +597,21 @@ with c6:
     prev_default = st.selectbox("Previous defaults", ["No","Yes"],
         index=0 if not vals else ["No","Yes"].index(vals["prev_default"]))
 
-int_rate = st.slider("Interest rate (%)", 5.0, 24.0,
-    vals["int_rate"] if vals else 11.0, 0.1)
+int_rate = st.number_input("Interest rate (%)",
+    min_value=0.0, max_value=50.0, step=0.1,
+    value=float(vals["int_rate"] if vals else 11.0))
 
-credit_score = st.slider("Credit score", 390, 850,
-    vals["credit_score"] if vals else 650)
+credit_score = st.number_input("Credit score",
+    min_value=300, max_value=900, step=1,
+    value=vals["credit_score"] if vals else 650)
 
 c7, c8 = st.columns(2)
 with c7:
-    cred_hist = st.slider("Credit history (years)", 1, 30,
-        vals["cred_hist"] if vals else 5)
+    cred_hist = st.number_input("Credit history (years)",
+        min_value=0, step=1,
+        value=vals["cred_hist"] if vals else 5)
 with c8:
-    loan_pct_display = round(min(loan_amt / income, 0.66), 2)
+    loan_pct_display = loan_percent_income(loan_amt, income)
     st.metric("Loan % of income", f"{loan_pct_display:.0%}")
 
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -456,11 +626,20 @@ if analyze:
         cred_hist, credit_score, gender, education,
         home, intent, prev_default
     )
+    input_notes = collect_input_notes(
+        age, income, emp_exp, loan_amt, int_rate,
+        cred_hist, credit_score, loan_pct
+    )
 
     default_prob = xgb.predict_proba(input_df)[0][1]
     risk  = default_prob
     prob  = 1 - default_prob
     decision, dtype = get_decision(risk)
+    offer_amt, offer_risk, offer_status = calculate_loan_offer(
+        age, income, emp_exp, loan_amt, int_rate,
+        cred_hist, credit_score, gender, education,
+        home, intent, prev_default
+    )
 
     if dtype == "success":
         color, bg   = "#00d4b4", "rgba(0,212,180,0.07)"
@@ -477,6 +656,12 @@ if analyze:
 
     st.divider()
     section("Analysis results")
+
+    if input_notes:
+        st.warning(
+            "Result generated, but some values are outside or near the edge of "
+            "the training data: " + " ".join(input_notes)
+        )
 
     # ── Decision banner ─────
     st.markdown(f"""
@@ -844,6 +1029,34 @@ summary.innerHTML = `
         <div style="font-size:14px;color:#8a9ab0;line-height:1.85;
                     font-family:'Syne',sans-serif">
             {explanation}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+
+    section("AI loan offer recommendation")
+
+    o1, o2 = st.columns(2)
+    o1.metric("Requested amount", f"INR {loan_amt:,.0f}")
+    o2.metric("Suggested offer", f"INR {offer_amt:,.0f}")
+
+    with st.spinner("Preparing offer..."):
+        offer_explanation = get_llm_loan_offer(
+            loan_amt, offer_amt, offer_risk, offer_status, decision, risk
+        )
+
+    st.markdown(f"""
+    <div style="background:rgba(0,212,180,0.05);
+                border:1px solid rgba(0,212,180,0.14);
+                border-radius:9px;padding:18px 20px">
+        <div style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;
+                    color:#00d4b4;font-family:'DM Mono',monospace;margin-bottom:10px">
+            Suggested bank offer
+        </div>
+        <div style="font-size:14px;color:#8a9ab0;line-height:1.85;
+                    font-family:'Syne',sans-serif">
+            {offer_explanation}
         </div>
     </div>
     """, unsafe_allow_html=True)
