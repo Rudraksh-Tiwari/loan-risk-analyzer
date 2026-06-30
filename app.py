@@ -1,28 +1,32 @@
-import streamlit as st
-import pandas as pd
+import json
+import os
+import warnings
+
 import numpy as np
+import pandas as pd
 import shap
+import streamlit as st
+import streamlit.components.v1 as components
 from groq import Groq
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
-import os
-import warnings
+
 warnings.filterwarnings('ignore')
 
 st.set_page_config(
-    page_title="LoanRisk AI",
+    page_title="Loan Risk Analyzer",
     page_icon="🏦",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# ── Inject CSS via st.html 
+# ── Theme: "Ledger" — light, institutional, dense ──
 st.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; }
 
-.stApp { background: #080c10 !important; }
+.stApp { background: #f3f2ef !important; }
 
 #MainMenu, footer, header,
 [data-testid="stToolbar"],
@@ -31,162 +35,143 @@ st.html("""
 [data-testid="stHeader"] { display: none !important; }
 
 .block-container {
-    padding: 0 0 80px 0 !important;
-    max-width: 740px !important;
+    padding: 1.4rem 2rem 80px 2rem !important;
+    max-width: 1220px !important;
 }
 
 html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif !important;
-    color: #e8edf2 !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    color: #1c1c1a !important;
 }
 
-/* Buttons */
+/* Buttons — base (preset / secondary) */
 .stButton > button {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.09) !important;
-    color: #6b7f8e !important;
+    background: #ffffff !important;
+    border: 1px solid #e3e1da !important;
+    color: #46453f !important;
     border-radius: 7px !important;
-    font-family: 'DM Mono', monospace !important;
-    font-size: 12px !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 13px !important;
     font-weight: 500 !important;
-    letter-spacing: 0.05em !important;
     width: 100% !important;
     padding: 10px 8px !important;
     transition: all 0.15s !important;
+    box-shadow: none !important;
 }
 .stButton > button:hover {
-    border-color: rgba(0,212,180,0.35) !important;
-    color: #00d4b4 !important;
-    background: rgba(0,212,180,0.05) !important;
-    box-shadow: none !important;
+    border-color: #1d3a5f !important;
+    color: #1d3a5f !important;
+    background: #f6f8fa !important;
 }
 .stButton > button:focus { box-shadow: none !important; outline: none !important; }
 
-/* Analyze button — last stButton on page */
-.stButton:last-of-type > button {
-    background: linear-gradient(135deg, #00d4b4 0%, #0066ff 100%) !important;
-    border: none !important;
-    color: #080c10 !important;
-    font-weight: 700 !important;
-    font-size: 13px !important;
-    letter-spacing: 0.1em !important;
-    padding: 14px !important;
-    border-radius: 8px !important;
+/* Primary (Analyze) */
+.stButton > button[kind="primary"],
+[data-testid="stBaseButton-primary"] {
+    background: #1d3a5f !important;
+    border: 1px solid #1d3a5f !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+    padding: 13px !important;
 }
-.stButton:last-of-type > button:hover {
-    opacity: 0.9 !important;
-    color: #080c10 !important;
+.stButton > button[kind="primary"]:hover,
+[data-testid="stBaseButton-primary"]:hover {
+    background: #16314f !important;
+    border-color: #16314f !important;
+    color: #ffffff !important;
 }
 
 /* Selectbox */
 [data-baseweb="select"] > div {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
+    background: #ffffff !important;
+    border: 1px solid #e3e1da !important;
     border-radius: 7px !important;
 }
 [data-baseweb="select"] span {
-    color: #e8edf2 !important;
-    font-family: 'DM Mono', monospace !important;
+    color: #1c1c1a !important;
+    font-family: 'IBM Plex Mono', monospace !important;
     font-size: 13px !important;
 }
-[data-baseweb="popover"] > div { background: #0e1520 !important; }
+[data-baseweb="popover"] > div { background: #ffffff !important; }
 [data-baseweb="menu"] {
-    background: #0e1520 !important;
-    border: 1px solid rgba(0,212,180,0.12) !important;
+    background: #ffffff !important;
+    border: 1px solid #e3e1da !important;
 }
 li[role="option"] {
-    color: #e8edf2 !important;
-    font-family: 'DM Mono', monospace !important;
+    color: #1c1c1a !important;
+    font-family: 'IBM Plex Mono', monospace !important;
     font-size: 13px !important;
 }
-li[role="option"]:hover { background: rgba(0,212,180,0.08) !important; }
+li[role="option"]:hover { background: #f1f4f7 !important; }
 
 /* Number input */
 input[type="number"] {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    color: #e8edf2 !important;
+    background: #ffffff !important;
+    border: 1px solid #e3e1da !important;
+    color: #1c1c1a !important;
     border-radius: 7px !important;
-    font-family: 'DM Mono', monospace !important;
+    font-family: 'IBM Plex Mono', monospace !important;
     font-size: 13px !important;
 }
 .stNumberInput button {
-    background: rgba(255,255,255,0.04) !important;
-    border-color: rgba(255,255,255,0.08) !important;
-    color: #6b7f8e !important;
+    background: #f6f5f2 !important;
+    border-color: #e3e1da !important;
+    color: #8a887f !important;
 }
 
-/* Slider */
-[data-testid="stSlider"] [data-baseweb="slider"] > div:first-child {
-    background: rgba(255,255,255,0.08) !important;
-}
-[data-testid="stSlider"] [role="slider"] {
-    background: #00d4b4 !important;
-    border-color: #00d4b4 !important;
-    box-shadow: 0 0 10px rgba(0,212,180,0.4) !important;
-}
-[data-testid="stThumbValue"] {
-    color: #00d4b4 !important;
-    font-family: 'DM Mono', monospace !important;
-    font-size: 12px !important;
-    background: transparent !important;
-}
-[data-testid="stTickBarMin"],
-[data-testid="stTickBarMax"] {
-    color: #2a3a4a !important;
-    font-family: 'DM Mono', monospace !important;
-    font-size: 10px !important;
-}
-
-/* Widget labels */
+/* Widget labels — sentence case, muted (no uppercase tracking) */
 label[data-testid="stWidgetLabel"] p,
 label[data-testid="stWidgetLabel"] {
-    color: #4a5a6a !important;
-    font-family: 'DM Mono', monospace !important;
-    font-size: 10px !important;
-    letter-spacing: 0.12em !important;
-    text-transform: uppercase !important;
-    font-weight: 500 !important;
+    color: #8a887f !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
 }
 
 /* Divider */
 hr {
     border: none !important;
-    border-top: 1px solid rgba(0,212,180,0.08) !important;
-    margin: 20px 0 !important;
+    border-top: 1px solid #e6e4dd !important;
+    margin: 18px 0 !important;
 }
 
 /* Metric */
 [data-testid="stMetric"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
+    background: #ffffff !important;
+    border: 1px solid #e6e4dd !important;
     border-radius: 8px !important;
-    padding: 14px 18px !important;
+    padding: 13px 16px !important;
 }
 [data-testid="stMetricLabel"] > div {
-    color: #4a5a6a !important;
-    font-family: 'DM Mono', monospace !important;
-    font-size: 10px !important;
-    letter-spacing: 0.12em !important;
-    text-transform: uppercase !important;
+    color: #8a887f !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 12px !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
 }
 [data-testid="stMetricValue"] > div {
-    color: #e8edf2 !important;
-    font-family: 'Syne', sans-serif !important;
-    font-size: 26px !important;
-    font-weight: 700 !important;
+    color: #1c1c1a !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 24px !important;
+    font-weight: 500 !important;
 }
 
 /* Spinner */
-[data-testid="stSpinner"] > div {
-    border-color: rgba(0,212,180,0.15) !important;
-    border-top-color: #00d4b4 !important;
+[data-testid="stSpinner"] > div { border-top-color: #1d3a5f !important; }
+
+/* Alerts */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
 }
 
 /* Column padding */
 [data-testid="column"] {
-    padding-left: 6px !important;
-    padding-right: 6px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
 }
 </style>
 """)
@@ -216,26 +201,26 @@ HARDCODED_GROQ_API_KEY = ""
 
 
 def get_groq_api_key():
-    return (
-        HARDCODED_GROQ_API_KEY
-        or os.environ.get("GROQ_API_KEY")
-        or st.secrets.get("GROQ_API_KEY")
-    )
+    key = HARDCODED_GROQ_API_KEY or os.environ.get("GROQ_API_KEY")
+    if key:
+        return key
+    # st.secrets raises if no secrets.toml exists anywhere — don't let that
+    # crash the app; AI summaries just stay disabled until a key is provided.
+    try:
+        return st.secrets.get("GROQ_API_KEY")
+    except Exception:
+        return None
 
 
 GROQ_API_KEY = get_groq_api_key()
 client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-if not GROQ_API_KEY:
-    st.warning(
-        "GROQ_API_KEY is not configured. Add it to .streamlit/secrets.toml or set it as an environment variable."
-    )
 
 # ─── HELPERS ─────
 def get_decision(risk):
-    if risk < 0.3:   return "APPROVED",          "success"
-    elif risk < 0.7: return "FLAGGED FOR REVIEW", "warning"
-    else:            return "REJECTED",           "error"
+    if risk < 0.3:   return "Approved",            "success"
+    elif risk < 0.7: return "Flagged for review",  "warning"
+    else:            return "Rejected",            "error"
 
 def get_llm_explanation(prob, risk, decision, reasons):
     prompt = f"""You are a loan officer. Write 2-3 SHORT sentences directly to the applicant. No greetings, no sign-offs, no placeholders like [Name] or [Bank].
@@ -414,9 +399,9 @@ def get_llm_loan_offer(requested_amt, offer_amt, offer_risk, offer_status,
     prompt = f"""You are a bank loan officer. Write 2-3 short sentences to the applicant.
 
 Original decision: {decision}
-Requested loan amount: INR {requested_amt:,.0f}
+Requested loan amount: ₹{requested_amt:,.0f}
 Requested loan risk score: {risk:.0%}
-Recommended offer amount: INR {offer_amt:,.0f}
+Recommended offer amount: ₹{offer_amt:,.0f}
 Recommended offer risk score: {offer_risk:.0%}
 Offer status: {offer_status}
 
@@ -429,12 +414,12 @@ Rules:
     if not client_groq:
         if offer_amt < requested_amt:
             return (
-                f"We cannot offer the full requested amount of INR {requested_amt:,.0f} "
+                f"We cannot offer the full requested amount of ₹{requested_amt:,.0f} "
                 f"for this profile. Based on the current risk assessment, the bank may "
-                f"offer approximately INR {offer_amt:,.0f} instead."
+                f"offer approximately ₹{offer_amt:,.0f} instead."
             )
         return (
-            f"The requested amount of INR {requested_amt:,.0f} is within the amount "
+            f"The requested amount of ₹{requested_amt:,.0f} is within the amount "
             "the bank may offer for this profile."
         )
 
@@ -447,20 +432,20 @@ Rules:
         return response.choices[0].message.content
     except Exception:
         return (
-            f"The bank may offer approximately INR {offer_amt:,.0f} for this situation, "
-            f"but cannot confirm the full requested amount of INR {requested_amt:,.0f}."
+            f"The bank may offer approximately ₹{offer_amt:,.0f} for this situation, "
+            f"but cannot confirm the full requested amount of ₹{requested_amt:,.0f}."
         )
 
 
 def section(label):
-    """Renders a styled section header"""
+    """Renders a styled section header (sentence-case, hairline rule)."""
     st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:12px;margin:24px 0 14px">
-        <span style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;
-                     color:#00d4b4;font-family:'DM Mono',monospace;white-space:nowrap">
+    <div style="display:flex;align-items:center;gap:12px;margin:20px 0 13px">
+        <span style="font-size:11px;letter-spacing:0.04em;
+                     color:#8a887f;font-family:'IBM Plex Mono',monospace;white-space:nowrap">
             {label}
         </span>
-        <div style="flex:1;height:1px;background:rgba(0,212,180,0.12)"></div>
+        <div style="flex:1;height:1px;background:#e6e4dd"></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -489,291 +474,334 @@ preset = st.session_state.get("preset", None)
 vals   = presets[preset] if preset else None
 
 
-# TOPBAR
-
+# ─── TOP BAR ──────────────────────────────────────────────────────────────────
 st.html("""
-<div style="
-    display:flex;align-items:center;justify-content:space-between;
-    padding:14px 0 14px;
-    border-bottom:1px solid rgba(0,212,180,0.1);
-    margin-bottom:8px;
-">
+<div style="display:flex;align-items:center;justify-content:space-between;
+            padding:6px 0 16px;border-bottom:1px solid #e3e1da;margin-bottom:6px;">
     <div style="display:flex;align-items:center;gap:12px">
-        <div style="
-            width:38px;height:38px;border-radius:9px;flex-shrink:0;
-            background:linear-gradient(135deg,#00d4b4,#0066ff);
-            display:flex;align-items:center;justify-content:center;
-            font-size:14px;font-weight:800;color:#080c10;
-            font-family:'Syne',sans-serif;
-        ">LR</div>
+        <div style="width:38px;height:38px;border-radius:9px;flex-shrink:0;
+                    background:#1d3a5f;display:flex;align-items:center;justify-content:center;">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#ffffff"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 21h18"/><path d="M3 10h18"/><path d="M5 6l7-3 7 3"/>
+                <path d="M4 10v11"/><path d="M20 10v11"/>
+                <path d="M8 14v3"/><path d="M12 14v3"/><path d="M16 14v3"/>
+            </svg>
+        </div>
         <div>
-            <div style="font-size:17px;font-weight:700;color:#fff;
-                        font-family:'Syne',sans-serif;line-height:1.2">
-                LoanRisk AI
+            <div style="font-size:18px;font-weight:600;color:#1c1c1a;
+                        font-family:'IBM Plex Sans',sans-serif;line-height:1.2">
+                Loan Risk Analyzer
             </div>
-            <div style="font-size:9px;color:#00d4b4;letter-spacing:0.2em;
-                        font-family:'DM Mono',monospace;text-transform:uppercase">
-                Credit Intelligence Platform
+            <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Sans',sans-serif">
+                Explainable credit scoring
             </div>
         </div>
     </div>
-    <div style="
-        display:flex;align-items:center;gap:8px;
-        padding:6px 14px;border-radius:20px;
-        border:1px solid rgba(0,212,180,0.18);
-        background:rgba(0,212,180,0.04);
-    ">
-        <div style="width:7px;height:7px;border-radius:50%;
-                    background:#00d4b4;box-shadow:0 0 7px #00d4b4"></div>
-        <span style="font-size:10px;color:#6b7f8e;
-                     font-family:'DM Mono',monospace;letter-spacing:0.1em">
-            MODEL LIVE &nbsp;·&nbsp; XGBoost + SHAP + Groq
-        </span>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#46453f;
+                border:1px solid #e3e1da;border-radius:7px;padding:6px 12px;background:#ffffff">
+        AUC-ROC 0.978 &nbsp;·&nbsp; XGBoost &nbsp;·&nbsp; 45k applicants
     </div>
 </div>
 """)
 
-
-# QUICK LOAD
-
-section("Quick load sample")
-b1, b2, b3 = st.columns(3)
-if b1.button("✓  Good applicant"):
-    st.session_state.preset = "good";       st.rerun()
-if b2.button("✕  Bad applicant"):
-    st.session_state.preset = "bad";        st.rerun()
-if b3.button("⚠  Borderline"):
-    st.session_state.preset = "borderline"; st.rerun()
-
-st.divider()
+if not GROQ_API_KEY:
+    st.warning(
+        "GROQ_API_KEY is not configured — the model still runs, but AI summaries are "
+        "disabled. Add it to .streamlit/secrets.toml or set it as an environment variable."
+    )
 
 
-# APPLICANT DETAILS
+# ─── TWO-PANE LAYOUT: inputs (left) · results (right) ─────────────────────────
+left, right = st.columns([5, 7], gap="large")
 
-section("Applicant details")
+with left:
+    # QUICK LOAD
+    section("Quick load")
+    b1, b2, b3 = st.columns(3)
+    if b1.button("Good applicant"):
+        st.session_state.preset = "good";       st.rerun()
+    if b2.button("Bad applicant"):
+        st.session_state.preset = "bad";        st.rerun()
+    if b3.button("Borderline"):
+        st.session_state.preset = "borderline"; st.rerun()
 
-c1, c2 = st.columns(2)
-with c1:
-    age = st.number_input("Age",
-        min_value=18, step=1,
-        value=vals["age"] if vals else 28)
-with c2:
-    gender = st.selectbox("Gender", ["male", "female"],
-        index=0 if not vals else ["male","female"].index(vals["gender"]))
+    st.divider()
 
-c3, c4 = st.columns(2)
-with c3:
-    education = st.selectbox("Education",
-        ["High School","Associate","Bachelor","Master","Doctorate"],
-        index=0 if not vals else ["High School","Associate","Bachelor","Master","Doctorate"].index(vals["education"]))
-with c4:
-    home = st.selectbox("Home ownership", ["RENT","OWN","MORTGAGE","OTHER"],
-        index=0 if not vals else ["RENT","OWN","MORTGAGE","OTHER"].index(vals["home"]))
+    # APPLICANT DETAILS
+    section("Applicant details")
 
-income = st.number_input("Annual income (₹)",
-    min_value=1, step=5000,
-    value=vals["income"] if vals else 50000)
+    c1, c2 = st.columns(2)
+    with c1:
+        age = st.number_input("Age",
+            min_value=18, step=1,
+            value=vals["age"] if vals else 28)
+    with c2:
+        gender = st.selectbox("Gender", ["male", "female"],
+            index=0 if not vals else ["male","female"].index(vals["gender"]))
 
-emp_exp = st.number_input("Employment experience (years)",
-    min_value=0, step=1,
-    value=vals["emp_exp"] if vals else 3)
+    c3, c4 = st.columns(2)
+    with c3:
+        education = st.selectbox("Education",
+            ["High School","Associate","Bachelor","Master","Doctorate"],
+            index=0 if not vals else ["High School","Associate","Bachelor","Master","Doctorate"].index(vals["education"]))
+    with c4:
+        home = st.selectbox("Home ownership", ["RENT","OWN","MORTGAGE","OTHER"],
+            index=0 if not vals else ["RENT","OWN","MORTGAGE","OTHER"].index(vals["home"]))
 
-st.divider()
+    income = st.number_input("Annual income (₹)",
+        min_value=1, step=5000,
+        value=vals["income"] if vals else 50000)
 
-# LOAN DETAILS
-
-section("Loan details")
-
-loan_amt = st.number_input("Loan amount (₹)",
-    min_value=1, step=500,
-    value=vals["loan_amt"] if vals else 10000)
-
-c5, c6 = st.columns(2)
-with c5:
-    intent = st.selectbox("Loan purpose",
-        ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"],
-        index=0 if not vals else ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"].index(vals["intent"]))
-with c6:
-    prev_default = st.selectbox("Previous defaults", ["No","Yes"],
-        index=0 if not vals else ["No","Yes"].index(vals["prev_default"]))
-
-int_rate = st.number_input("Interest rate (%)",
-    min_value=0.0, max_value=50.0, step=0.1,
-    value=float(vals["int_rate"] if vals else 11.0))
-
-credit_score = st.number_input("Credit score",
-    min_value=300, max_value=900, step=1,
-    value=vals["credit_score"] if vals else 650)
-
-c7, c8 = st.columns(2)
-with c7:
-    cred_hist = st.number_input("Credit history (years)",
+    emp_exp = st.number_input("Employment experience (years)",
         min_value=0, step=1,
-        value=vals["cred_hist"] if vals else 5)
-with c8:
-    loan_pct_display = loan_percent_income(loan_amt, income)
-    st.metric("Loan % of income", f"{loan_pct_display:.0%}")
+        value=vals["emp_exp"] if vals else 3)
 
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-analyze = st.button("⟡  ANALYZE APPLICATION", use_container_width=True)
+    st.divider()
+
+    # LOAN DETAILS
+    section("Loan details")
+
+    loan_amt = st.number_input("Loan amount (₹)",
+        min_value=1, step=500,
+        value=vals["loan_amt"] if vals else 10000)
+
+    c5, c6 = st.columns(2)
+    with c5:
+        intent = st.selectbox("Loan purpose",
+            ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"],
+            index=0 if not vals else ["PERSONAL","EDUCATION","MEDICAL","VENTURE","HOMEIMPROVEMENT","DEBTCONSOLIDATION"].index(vals["intent"]))
+    with c6:
+        prev_default = st.selectbox("Previous defaults", ["No","Yes"],
+            index=0 if not vals else ["No","Yes"].index(vals["prev_default"]))
+
+    int_rate = st.number_input("Interest rate (%)",
+        min_value=0.0, max_value=50.0, step=0.1,
+        value=float(vals["int_rate"] if vals else 11.0))
+
+    credit_score = st.number_input("Credit score",
+        min_value=300, max_value=900, step=1,
+        value=vals["credit_score"] if vals else 650)
+
+    c7, c8 = st.columns(2)
+    with c7:
+        cred_hist = st.number_input("Credit history (years)",
+            min_value=0, step=1,
+            value=vals["cred_hist"] if vals else 5)
+    with c8:
+        loan_pct_display = loan_percent_income(loan_amt, income)
+        st.metric("Loan % of income", f"{loan_pct_display:.0%}")
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    analyze = st.button("Analyze application", use_container_width=True, type="primary")
 
 
-# RESULTS — shown below inputs after clicking analyze
+with right:
+    if not analyze:
+        # ── Idle state: model card (uses the space, surfaces the stats) ──
+        st.markdown("""
+        <div style="border:1px solid #e3e1da;border-radius:10px;background:#ffffff;padding:22px 24px">
+            <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-bottom:16px">
+                Model
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+                <div>
+                    <div style="font-size:27px;font-weight:600;color:#1d3a5f;font-family:'IBM Plex Sans',sans-serif">0.978</div>
+                    <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-top:2px">AUC-ROC</div>
+                </div>
+                <div>
+                    <div style="font-size:27px;font-weight:600;color:#1c1c1a;font-family:'IBM Plex Sans',sans-serif">45,000</div>
+                    <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-top:2px">Applicants</div>
+                </div>
+                <div>
+                    <div style="font-size:27px;font-weight:600;color:#1c1c1a;font-family:'IBM Plex Sans',sans-serif">XGBoost</div>
+                    <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-top:2px">Model</div>
+                </div>
+            </div>
 
-if analyze:
-    input_df, loan_pct = build_input(
-        age, income, emp_exp, loan_amt, int_rate,
-        cred_hist, credit_score, gender, education,
-        home, intent, prev_default
-    )
-    input_notes = collect_input_notes(
-        age, income, emp_exp, loan_amt, int_rate,
-        cred_hist, credit_score, loan_pct
-    )
+            <hr style="border:none;border-top:1px solid #ece9e2;margin:20px 0">
 
-    default_prob = xgb.predict_proba(input_df)[0][1]
-    risk  = default_prob
-    prob  = 1 - default_prob
-    decision, dtype = get_decision(risk)
-    offer_amt, offer_risk, offer_status = calculate_loan_offer(
-        age, income, emp_exp, loan_amt, int_rate,
-        cred_hist, credit_score, gender, education,
-        home, intent, prev_default
-    )
+            <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-bottom:13px">
+                Decision thresholds
+            </div>
+            <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;align-items:center;gap:11px;font-size:13px;color:#46453f">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#2e6b4f;flex-shrink:0"></span>
+                    <span style="width:70px">Approve</span>
+                    <span style="color:#8a887f;font-family:'IBM Plex Mono',monospace">Risk below 30%</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;font-size:13px;color:#46453f">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#b5790a;flex-shrink:0"></span>
+                    <span style="width:70px">Review</span>
+                    <span style="color:#8a887f;font-family:'IBM Plex Mono',monospace">Risk 30% – 70%</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;font-size:13px;color:#46453f">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#a3392f;flex-shrink:0"></span>
+                    <span style="width:70px">Reject</span>
+                    <span style="color:#8a887f;font-family:'IBM Plex Mono',monospace">Risk above 70%</span>
+                </div>
+            </div>
 
-    if dtype == "success":
-        color, bg   = "#00d4b4", "rgba(0,212,180,0.07)"
-        border      = "rgba(0,212,180,0.22)"
-        badge_label = "LOW RISK"
-    elif dtype == "warning":
-        color, bg   = "#ffb400", "rgba(255,180,0,0.07)"
-        border      = "rgba(255,180,0,0.22)"
-        badge_label = "NEEDS REVIEW"
+            <hr style="border:none;border-top:1px solid #ece9e2;margin:20px 0">
+
+            <div style="font-size:11px;color:#8a887f;font-family:'IBM Plex Mono',monospace;margin-bottom:11px">
+                How it works
+            </div>
+            <div style="font-size:13px;color:#46453f;line-height:1.7;font-family:'IBM Plex Sans',sans-serif">
+                Enter the applicant's profile, then XGBoost scores default risk, SHAP surfaces
+                the factors behind the score, and Llama 3.3 70B writes a plain-language summary.
+            </div>
+
+            <div style="margin-top:18px;font-size:13px;color:#1d3a5f;font-family:'IBM Plex Sans',sans-serif">
+                Fill in the details on the left, then press Analyze application.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     else:
-        color, bg   = "#ff5050", "rgba(255,80,80,0.07)"
-        border      = "rgba(255,80,80,0.22)"
-        badge_label = "HIGH RISK"
-
-    st.divider()
-    section("Analysis results")
-
-    if input_notes:
-        st.warning(
-            "Result generated, but some values are outside or near the edge of "
-            "the training data: " + " ".join(input_notes)
+        input_df, loan_pct = build_input(
+            age, income, emp_exp, loan_amt, int_rate,
+            cred_hist, credit_score, gender, education,
+            home, intent, prev_default
+        )
+        input_notes = collect_input_notes(
+            age, income, emp_exp, loan_amt, int_rate,
+            cred_hist, credit_score, loan_pct
         )
 
-    # ── Decision banner ─────
-    st.markdown(f"""
-    <div style="background:{bg};border:1px solid {border};border-radius:10px;
-                padding:22px 26px;margin-bottom:16px;
-                display:flex;align-items:center;justify-content:space-between">
-        <div>
-            <div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;
-                        color:#4a5a6a;font-family:'DM Mono',monospace;margin-bottom:6px">
-                Decision
-            </div>
-            <div style="font-size:34px;font-weight:800;color:{color};
-                        font-family:'Syne',sans-serif;letter-spacing:0.03em;line-height:1">
-                {decision}
-            </div>
-        </div>
-        <div style="padding:8px 18px;border-radius:20px;
-                    background:rgba(0,0,0,0.25);border:1px solid {border};
-                    font-size:10px;font-weight:600;color:{color};
-                    font-family:'DM Mono',monospace;letter-spacing:0.14em">
-            {badge_label}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── Metrics ────────
-    m1, m2 = st.columns(2)
-    m1.metric("Approval probability", f"{prob:.0%}")
-    m2.metric("Risk score",           f"{risk:.0%}")
-
-    # ── Risk bar ───────
-    st.markdown(f"""
-    <div style="margin:14px 0 4px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-            <span style="font-size:9px;font-family:'DM Mono',monospace;
-                         color:#2a3a4a;letter-spacing:0.1em;text-transform:uppercase">
-                Low risk
-            </span>
-            <span style="font-size:9px;font-family:'DM Mono',monospace;
-                         color:#2a3a4a;letter-spacing:0.1em;text-transform:uppercase">
-                High risk
-            </span>
-        </div>
-        <div style="height:5px;background:rgba(255,255,255,0.05);
-                    border-radius:3px;overflow:hidden">
-            <div style="height:100%;width:{risk*100:.1f}%;border-radius:3px;
-                        background:linear-gradient(90deg,#00d4b4,{color})">
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── SHAP factors ─────
-    shap_vals      = explainer.shap_values(input_df)[0]
-    shap_vals_risk = -shap_vals
-    top_idx        = abs(shap_vals_risk).argsort()[-3:][::-1]
-
-    reasons = []
-    for i in top_idx:
-        d = "increases risk" if shap_vals_risk[i] > 0 else "decreases risk"
-        reasons.append(
-            f"{feature_names[i]} = {input_df.iloc[0][feature_names[i]]:.2f} ({d})"
+        default_prob = xgb.predict_proba(input_df)[0][1]
+        risk  = default_prob
+        prob  = 1 - default_prob
+        decision, dtype = get_decision(risk)
+        offer_amt, offer_risk, offer_status = calculate_loan_offer(
+            age, income, emp_exp, loan_amt, int_rate,
+            cred_hist, credit_score, gender, education,
+            home, intent, prev_default
         )
 
-    section("Feature impact · SHAP waterfall")
+        if dtype == "success":
+            color, bg   = "#2e6b4f", "#eef4ef"
+            border      = "#cfe3d6"
+            badge_label = "Low risk"
+        elif dtype == "warning":
+            color, bg   = "#b5790a", "#fbf3e3"
+            border      = "#ecdcb3"
+            badge_label = "Needs review"
+        else:
+            color, bg   = "#a3392f", "#fbeeec"
+            border      = "#eccfc9"
+            badge_label = "High risk"
 
-    # ── Build top-8 SHAP data for chart ──
-    top8_idx = abs(shap_vals_risk).argsort()[-8:][::-1]
+        section("Decision")
 
-    def clean_name(fn):
-        return (fn.replace("person_","").replace("loan_","")
-                  .replace("cb_","").replace("_"," ").title())
+        if input_notes:
+            st.warning(
+                "Result generated, but some values are outside or near the edge of "
+                "the training data: " + " ".join(input_notes)
+            )
 
-    chart_rows = []
-    for i in top8_idx:
-        sv   = float(shap_vals_risk[i])
-        rv   = float(input_df.iloc[0][feature_names[i]])
-        dv   = f"{int(rv):,}" if rv == int(rv) else f"{rv:.2f}"
-        chart_rows.append({
-            "label": clean_name(feature_names[i]),
-            "value": dv,
-            "shap":  round(sv, 4),
-        })
+        # ── Decision banner ──
+        st.markdown(f"""
+        <div style="background:{bg};border:1px solid {border};border-radius:10px;
+                    padding:20px 24px;margin-bottom:16px;
+                    display:flex;align-items:center;justify-content:space-between">
+            <div>
+                <div style="font-size:11px;color:#8a887f;
+                            font-family:'IBM Plex Mono',monospace;margin-bottom:6px">
+                    Decision
+                </div>
+                <div style="font-size:32px;font-weight:600;color:{color};
+                            font-family:'IBM Plex Sans',sans-serif;line-height:1">
+                    {decision}
+                </div>
+            </div>
+            <div style="padding:7px 16px;border-radius:7px;background:#ffffff;
+                        border:1px solid {border};font-size:12px;color:{color};
+                        font-family:'IBM Plex Mono',monospace">
+                {badge_label}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    base_val   = float(explainer.expected_value)
-    final_val  = float(xgb.predict_proba(input_df)[0][1])
-    max_abs    = max(abs(r["shap"]) for r in chart_rows) or 1
+        # ── Metrics ──
+        m1, m2 = st.columns(2)
+        m1.metric("Approval probability", f"{prob:.0%}")
+        m2.metric("Risk score",           f"{risk:.0%}")
 
-    import json
-    rows_json     = json.dumps(chart_rows)
-    base_json     = json.dumps(round(base_val, 4))
-    final_json    = json.dumps(round(final_val, 4))
-    maxabs_json   = json.dumps(round(max_abs, 4))
+        # ── Risk bar ──
+        st.markdown(f"""
+        <div style="margin:14px 0 4px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:#a3a097">
+                    Low risk
+                </span>
+                <span style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:#a3a097">
+                    High risk
+                </span>
+            </div>
+            <div style="height:6px;background:#ece9e2;border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:{risk*100:.1f}%;border-radius:4px;background:{color}"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    shap_html = f"""
+        st.divider()
+
+        # ── SHAP factors ──
+        shap_vals      = explainer.shap_values(input_df)[0]
+        shap_vals_risk = -shap_vals
+        top_idx        = abs(shap_vals_risk).argsort()[-3:][::-1]
+
+        reasons = []
+        for i in top_idx:
+            d = "increases risk" if shap_vals_risk[i] > 0 else "decreases risk"
+            reasons.append(
+                f"{feature_names[i]} = {input_df.iloc[0][feature_names[i]]:.2f} ({d})"
+            )
+
+        section("What's driving this · SHAP")
+
+        top8_idx = abs(shap_vals_risk).argsort()[-8:][::-1]
+
+        def clean_name(fn):
+            return (fn.replace("person_","").replace("loan_","")
+                      .replace("cb_","").replace("_"," ").title())
+
+        chart_rows = []
+        for i in top8_idx:
+            sv   = float(shap_vals_risk[i])
+            rv   = float(input_df.iloc[0][feature_names[i]])
+            dv   = f"{int(rv):,}" if rv == int(rv) else f"{rv:.2f}"
+            chart_rows.append({
+                "label": clean_name(feature_names[i]),
+                "value": dv,
+                "shap":  round(sv, 4),
+            })
+
+        base_val   = float(explainer.expected_value)
+        final_val  = float(xgb.predict_proba(input_df)[0][1])
+        max_abs    = max(abs(r["shap"]) for r in chart_rows) or 1
+
+        rows_json     = json.dumps(chart_rows)
+        base_json     = json.dumps(round(base_val, 4))
+        final_json    = json.dumps(round(final_val, 4))
+        maxabs_json   = json.dumps(round(max_abs, 4))
+
+        shap_html = f"""
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700&display=swap');
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
     background: transparent;
-    font-family: 'DM Mono', monospace;
-    color: #e8edf2;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #46453f;
     padding: 0 2px 28px;
   }}
 
-  /* ── Waterfall chart ── */
   .chart-wrap {{ width: 100%; }}
 
   .row {{
@@ -784,12 +812,12 @@ if analyze:
     position: relative;
     cursor: default;
   }}
-  .row:hover .bar-fill {{ filter: brightness(1.18); }}
+  .row:hover .bar-fill {{ filter: brightness(0.92); }}
   .row:hover .tooltip  {{ opacity: 1; pointer-events: auto; }}
 
   .feat-label {{
     font-size: 11px;
-    color: #6b7f8e;
+    color: #6b6a64;
     width: 148px;
     min-width: 148px;
     text-align: right;
@@ -802,20 +830,19 @@ if analyze:
   .bar-track {{
     flex: 1;
     height: 26px;
-    background: rgba(255,255,255,0.03);
+    background: #ece9e2;
     border-radius: 5px;
     position: relative;
     overflow: visible;
   }}
 
-  /* centre line */
   .bar-track::after {{
     content: '';
     position: absolute;
     left: 50%;
     top: 0; bottom: 0;
     width: 1px;
-    background: rgba(255,255,255,0.07);
+    background: #d8d5cc;
     transform: translateX(-50%);
   }}
 
@@ -826,8 +853,8 @@ if analyze:
     transition: width 0.55s cubic-bezier(.22,.61,.36,1),
                 left  0.55s cubic-bezier(.22,.61,.36,1);
   }}
-  .bar-fill.risk  {{ background: linear-gradient(90deg,#c0392b,#ff5050); }}
-  .bar-fill.safe  {{ background: linear-gradient(90deg,#00d4b4,#00a896); }}
+  .bar-fill.risk  {{ background: #b5483a; }}
+  .bar-fill.safe  {{ background: #2e6b4f; }}
 
   .shap-val {{
     font-size: 10px;
@@ -836,30 +863,29 @@ if analyze:
     letter-spacing: 0.04em;
     font-weight: 500;
   }}
-  .shap-val.risk {{ color: #ff5050; }}
-  .shap-val.safe {{ color: #00d4b4; }}
+  .shap-val.risk {{ color: #b5483a; }}
+  .shap-val.safe {{ color: #2e6b4f; }}
 
-  /* tooltip */
   .tooltip {{
     position: absolute;
     left: 162px;
     top: -38px;
-    background: #0e1520;
-    border: 1px solid rgba(0,212,180,0.2);
+    background: #ffffff;
+    border: 1px solid #e3e1da;
     border-radius: 7px;
     padding: 7px 12px;
     font-size: 10px;
-    color: #c8d4e0;
+    color: #46453f;
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s;
     z-index: 99;
     letter-spacing: 0.04em;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.07);
   }}
-  .tooltip span {{ color: #00d4b4; }}
+  .tooltip span {{ color: #1d3a5f; }}
 
-  /* ── Summary strip ── */
   .summary {{
     display: flex;
     align-items: center;
@@ -867,33 +893,31 @@ if analyze:
     margin: 18px 0 4px;
     border-radius: 8px;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.06);
-    background: rgba(255,255,255,0.02);
+    border: 1px solid #e6e4dd;
+    background: #faf9f6;
   }}
   .s-block {{
     flex: 1;
     padding: 10px 14px;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid #ece9e2;
   }}
   .s-block:last-child {{ border-right: none; }}
   .s-label {{
-    font-size: 8px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #2a3a4a;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: #a3a097;
     margin-bottom: 4px;
   }}
   .s-val {{
     font-size: 18px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
   }}
-  .s-val.base   {{ color: #4a5a6a; }}
-  .s-val.pos    {{ color: #ff5050; }}
-  .s-val.neg    {{ color: #00d4b4; }}
-  .s-val.final  {{ color: #e8edf2; }}
+  .s-val.base   {{ color: #8a887f; }}
+  .s-val.pos    {{ color: #b5483a; }}
+  .s-val.neg    {{ color: #2e6b4f; }}
+  .s-val.final  {{ color: #1c1c1a; }}
 
-  /* ── Legend ── */
   .legend {{
     display: flex;
     gap: 20px;
@@ -905,9 +929,8 @@ if analyze:
     align-items: center;
     gap: 6px;
     font-size: 9px;
-    color: #4a5a6a;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    color: #8a887f;
+    letter-spacing: 0.04em;
   }}
   .leg-dot {{
     width: 8px; height: 8px;
@@ -920,11 +943,11 @@ if analyze:
 
   <div class="legend">
     <div class="leg-item">
-      <div class="leg-dot" style="background:#ff5050"></div>
+      <div class="leg-dot" style="background:#b5483a"></div>
       Raises risk
     </div>
     <div class="leg-item">
-      <div class="leg-dot" style="background:#00d4b4"></div>
+      <div class="leg-dot" style="background:#2e6b4f"></div>
       Lowers risk
     </div>
   </div>
@@ -944,12 +967,11 @@ const maxAbs   = {maxabs_json};
 const container = document.getElementById('rows');
 
 rows.forEach(r => {{
-  const pct    = (Math.abs(r.shap) / maxAbs) * 46;  // max 46% each side
+  const pct    = (Math.abs(r.shap) / maxAbs) * 46;
   const isRisk = r.shap > 0;
   const cls    = isRisk ? 'risk' : 'safe';
   const sign   = isRisk ? '+' : '';
 
-  // bar starts at centre (50%), extends left or right
   const left  = isRisk ? '50%' : `${{50 - pct}}%`;
   const width = `${{pct}}%`;
 
@@ -971,7 +993,6 @@ rows.forEach(r => {{
   container.appendChild(div);
 }});
 
-// Animate bars after paint
 requestAnimationFrame(() => {{
   setTimeout(() => {{
     document.querySelectorAll('.bar-fill').forEach(el => {{
@@ -981,7 +1002,6 @@ requestAnimationFrame(() => {{
   }}, 60);
 }});
 
-// Summary strip
 const posSum = rows.filter(r=>r.shap>0).reduce((a,r)=>a+r.shap,0);
 const negSum = rows.filter(r=>r.shap<0).reduce((a,r)=>a+r.shap,0);
 const summary = document.getElementById('summary');
@@ -991,11 +1011,11 @@ summary.innerHTML = `
     <div class="s-val base">${{(baseVal*100).toFixed(1)}}%</div>
   </div>
   <div class="s-block">
-    <div class="s-label">Risk factors ▲</div>
+    <div class="s-label">Risk factors</div>
     <div class="s-val pos">+${{(posSum*100).toFixed(1)}}%</div>
   </div>
   <div class="s-block">
-    <div class="s-label">Safe factors ▼</div>
+    <div class="s-label">Safe factors</div>
     <div class="s-val neg">${{(negSum*100).toFixed(1)}}%</div>
   </div>
   <div class="s-block">
@@ -1008,55 +1028,56 @@ summary.innerHTML = `
 </html>
 """
 
-    import streamlit.components.v1 as components
-    components.html(shap_html, height=420, scrolling=False)
+        components.html(shap_html, height=420, scrolling=False)
 
-    st.divider()
+        st.divider()
 
-    # ── AI Explanation ─────────
-    section("AI explanation")
-    with st.spinner("Generating..."):
-        explanation = get_llm_explanation(prob, risk, decision, reasons)
+        # ── Summary ──
+        section("Summary")
+        with st.spinner("Generating…"):
+            explanation = get_llm_explanation(prob, risk, decision, reasons)
 
-    st.markdown(f"""
-    <div style="background:rgba(0,102,255,0.05);
-                border:1px solid rgba(0,102,255,0.14);
-                border-radius:9px;padding:18px 20px">
-        <div style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;
-                    color:#4477cc;font-family:'DM Mono',monospace;margin-bottom:10px">
-            ◆ &nbsp;Groq · Llama 3.3 70B
+        st.markdown(f"""
+        <div style="background:#ffffff;border:1px solid #e3e1da;
+                    border-radius:9px;padding:18px 20px">
+            <div style="font-size:11px;color:#8a887f;
+                        font-family:'IBM Plex Mono',monospace;margin-bottom:10px">
+                Plain-language summary
+            </div>
+            <div style="font-size:14px;color:#46453f;line-height:1.75;
+                        font-family:'IBM Plex Sans',sans-serif">
+                {explanation}
+            </div>
+            <div style="font-size:11px;color:#b3b1a8;
+                        font-family:'IBM Plex Mono',monospace;margin-top:12px">
+                Generated by Llama 3.3 70B
+            </div>
         </div>
-        <div style="font-size:14px;color:#8a9ab0;line-height:1.85;
-                    font-family:'Syne',sans-serif">
-            {explanation}
+        """, unsafe_allow_html=True)
+
+        st.divider()
+
+        section("Suggested offer")
+
+        o1, o2 = st.columns(2)
+        o1.metric("Requested amount", f"₹ {loan_amt:,.0f}")
+        o2.metric("Suggested offer",  f"₹ {offer_amt:,.0f}")
+
+        with st.spinner("Preparing offer…"):
+            offer_explanation = get_llm_loan_offer(
+                loan_amt, offer_amt, offer_risk, offer_status, decision, risk
+            )
+
+        st.markdown(f"""
+        <div style="background:#eef3f8;border:1px solid #d9e2ec;
+                    border-radius:9px;padding:18px 20px">
+            <div style="font-size:11px;color:#3a5a7a;
+                        font-family:'IBM Plex Mono',monospace;margin-bottom:10px">
+                Recommendation
+            </div>
+            <div style="font-size:14px;color:#3d4654;line-height:1.75;
+                        font-family:'IBM Plex Sans',sans-serif">
+                {offer_explanation}
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.divider()
-
-    section("AI loan offer recommendation")
-
-    o1, o2 = st.columns(2)
-    o1.metric("Requested amount", f"INR {loan_amt:,.0f}")
-    o2.metric("Suggested offer", f"INR {offer_amt:,.0f}")
-
-    with st.spinner("Preparing offer..."):
-        offer_explanation = get_llm_loan_offer(
-            loan_amt, offer_amt, offer_risk, offer_status, decision, risk
-        )
-
-    st.markdown(f"""
-    <div style="background:rgba(0,212,180,0.05);
-                border:1px solid rgba(0,212,180,0.14);
-                border-radius:9px;padding:18px 20px">
-        <div style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;
-                    color:#00d4b4;font-family:'DM Mono',monospace;margin-bottom:10px">
-            Suggested bank offer
-        </div>
-        <div style="font-size:14px;color:#8a9ab0;line-height:1.85;
-                    font-family:'Syne',sans-serif">
-            {offer_explanation}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
